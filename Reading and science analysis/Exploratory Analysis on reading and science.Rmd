@@ -1,0 +1,315 @@
+---
+title: "Exploratory data analysis on reading and science data"
+author: "Oluwayomi Akinfenwa"
+date: "23/11/2023"
+output:
+  html_document:
+    toc: yes
+    toc_depth: '4'
+    df_print: paged
+  bookdown::html_document2:
+    toc: no
+    toc_float: yes
+    toc_depth: 4
+    number_sections: yes
+  pdf_document:
+    toc: yes
+    toc_depth: '4'
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+options(knitr.duplicate.label = 'allow')
+```
+
+### Loading necessary packages
+
+```{r, libraries, include = FALSE}
+library(lme4)
+library(tidybayes)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(rjags)
+library(R2jags)
+library(bayesplot)
+library(patchwork)
+library(ggragged)
+```
+
+Loading the two R.data containing the learning-tower data set and the processed data with Region and Income classification.
+
+```{r loading the data}
+load(here::here("SavedData", "pisam.Rdata"))
+load(here::here("SavedData", "pisar.Rdata"))
+load(here::here("SavedData", "pisas.Rdata"))
+```
+
+**We have 406 observations and for this analysis, we decided to examine European countries**
+
+### Filtering European countries alone
+
+```{r Europe}
+Math_Pisa_Europe_Data <- Pisa_Data |> filter(Continent == "Europe") |> arrange(Country)
+
+
+Read_Pisa_Europe_Data <- Read_Pisa_Data |> filter(Continent == "Europe") |> arrange(Country)
+
+Science_Pisa_Europe_Data <- Science_Pisa_Data |> filter(Continent == "Europe") |> arrange(Country)
+
+# Joining the Income and Region together to form one new column
+Math_Pisa_Europe_Data <- unite(Math_Pisa_Europe_Data, col = "Income_Region", c("Income", "Region"), sep = "_", remove = FALSE)
+
+Read_Pisa_Europe_Data <- unite(Read_Pisa_Europe_Data, col = "Income_Region", c("Income", "Region"), sep = "_", remove = FALSE)
+
+Science_Pisa_Europe_Data <- unite(Science_Pisa_Europe_Data, col = "Income_Region", c("Income", "Region"), sep = "_", remove = FALSE)
+```
+
+```{r}
+## Obtaining the region indexes
+Mcountry_region <- Math_Pisa_Europe_Data |> group_by(Country) |>
+  summarise(Region=first(Region)) |>
+  mutate(Country_num = as.numeric(as.factor(Country))) |>
+  mutate(region_num = as.numeric(as.factor(Region)))
+
+Rcountry_region <- Read_Pisa_Europe_Data |> group_by(Country) |>
+  summarise(Region=first(Region)) |>
+  mutate(Country_num = as.numeric(as.factor(Country))) |>
+  mutate(region_num = as.numeric(as.factor(Region)))
+
+Scountry_region <- Science_Pisa_Europe_Data |> group_by(Country) |>
+  summarise(Region=first(Region)) |>
+  mutate(Country_num = as.numeric(as.factor(Country))) |>
+  mutate(region_num = as.numeric(as.factor(Region)))
+```
+
+
+### Fitting lm model on reading and science data
+
+```{r}
+library(broom)
+## The function reframe- creates a new data-frame by applying functions t columns of an existing data frame.
+
+Math_model_est <-Math_Pisa_Europe_Data |>
+  nest_by(Country) |>
+  mutate(mod = list(lm(math ~ year_orig, data = data))) |>
+  reframe(tidy(mod))|>
+   select(Country, term, estimate)
+
+Read_model_est <-Read_Pisa_Europe_Data |>
+  nest_by(Country) |>
+  mutate(mod = list(lm(read ~ year_orig, data = data))) |>
+  reframe(tidy(mod))|>
+   select(Country, term, estimate)
+
+
+Science_model_est <-Science_Pisa_Europe_Data |> nest_by(Country) |>
+  mutate(model = list(lm(science ~ year_orig, data = data))) |>
+  reframe(tidy(model))|>
+   select(Country, term, estimate)
+
+
+### Tidying the estimates
+ Math_Model_IS <-  Math_model_est  |>
+   pivot_wider(values_from = estimate, names_from = term) |>
+   rename("slope" = "year_orig") |>
+  mutate(slopesign = sign(slope)) |>
+  left_join(Mcountry_region, join_by(Country)) |>
+  select(-c(Country_num, region_num)) |>
+  arrange(slope)
+  
+  
+
+ Read_Model_IS <-  Read_model_est  |>
+   pivot_wider(values_from = estimate, names_from = term) |>
+  rename("slope" = "year_orig") |>
+  mutate(slopesign = sign(slope)) |>
+  left_join(Rcountry_region, join_by(Country)) |>
+  select(-c(Country_num, region_num)) |>
+  arrange(slope)
+
+ Science_Model_IS <-Science_model_est  |>
+   pivot_wider(values_from = estimate, names_from = term) |>
+   rename("slope" = "year_orig") |>
+  mutate(slopesign = sign(slope)) |>
+  left_join(Scountry_region, join_by(Country)) |>
+  select(-c(Country_num, region_num)) |>
+  arrange(slope)
+
+```
+
+
+**For the European countries, we have 230 observations from 40 countries.**
+
+
+### Exploratory data analysis
+
+```{r}
+##Merging the slope-sign with the Pisa data so that i can rearrange by the both country and slope-sign
+
+##Maths
+M_Slopesign <-  Math_Model_IS |>
+  select(Country, slope)
+
+Math_Pisa_Europe_Data1 <- Math_Pisa_Europe_Data |>
+  left_join(M_Slopesign, join_by(Country))
+
+Math_Pisa_Europe_Data1$facet <- factor(Math_Pisa_Europe_Data1$Region, 
+                  levels = c("Western Europe", "Eastern Europe", "Northern Europe", "Southern Europe"))
+
+Math_Model_IS$facet <- factor(Math_Model_IS$Region, 
+                  levels = c("Western Europe", "Eastern Europe", "Northern Europe", "Southern Europe"))
+
+##Reads
+R_Slopesign <-  Read_Model_IS |>
+  select(Country, slope)
+
+Read_Pisa_Europe_Data1 <- Read_Pisa_Europe_Data |>
+  left_join(R_Slopesign, join_by(Country))
+
+Read_Pisa_Europe_Data1$facet <- factor(Read_Pisa_Europe_Data1$Region, 
+                  levels = c("Western Europe", "Eastern Europe", "Northern Europe", "Southern Europe"))
+
+Read_Model_IS$facet <- factor(Read_Model_IS$Region, 
+                  levels = c("Western Europe", "Eastern Europe", "Northern Europe", "Southern Europe"))
+
+
+##Science
+S_Slopesign <-  Science_Model_IS |>
+  select(Country, slope)
+
+Science_Pisa_Europe_Data1 <- Science_Pisa_Europe_Data |>
+  left_join(S_Slopesign, join_by(Country))
+
+Science_Pisa_Europe_Data1$facet <- factor(Science_Pisa_Europe_Data1$Region, 
+                  levels = c("Western Europe", "Eastern Europe", "Northern Europe", "Southern Europe"))
+
+Science_Model_IS$facet <- factor(Science_Model_IS$Region, 
+                  levels = c("Western Europe", "Eastern Europe", "Northern Europe", "Southern Europe"))
+```
+
+
+### The plot
+
+```{r}
+pdf("Math.fit.pdf",
+    width = 12,
+    height = 8)
+ggplot(data = Math_Pisa_Europe_Data1,
+         aes(x=year_orig, y=math))+
+  geom_point(color = "grey25")+
+   geom_abline(data=Math_Model_IS, 
+               aes(slope=slope, intercept= `(Intercept)`,color = factor(slopesign)))+
+  facet_ragged_rows(vars(facet), vars(reorder(Country, slope)),scales = "free_y",
+                    switch = "y", labeller=label_wrap_gen(width=6))+
+  scale_x_continuous(labels = function(x) x+2000, breaks = seq(0,18,3))+
+  scale_y_continuous(position = "right")+
+   labs(x= " ", y = " ",  color = "Slope") + scale_color_manual(values = c("maroon", "blue3"), labels = c("negative", "positive"), na.translate = F)+
+  theme(legend.position = "bottom",
+        plot.subtitle = element_text(family = "Serif"),
+        axis.text.x = element_text(angle = 45, hjust = 0.5, vjust = 0.5, face = "bold"),strip.text.x = element_text(size = 9,face = "bold"),
+        axis.text.y = element_text(size = 9,face = "bold"))+
+  ggtitle("Separate linear model fit on average math scores across the country")
+dev.off()
+```
+
+```{r}
+pdf("Read.fit.pdf",
+    width = 12,
+    height = 8)
+ggplot(data = Read_Pisa_Europe_Data1,
+         aes(x=year_orig, y=read))+
+  geom_point(color = "grey25")+
+   geom_abline(data=Read_Model_IS, 
+               aes(slope=slope, intercept= `(Intercept)`,color = factor(slopesign)))+
+  facet_ragged_rows(vars(facet), vars(reorder(Country, slope)),scales = "free_y",
+                    switch = "y", labeller=label_wrap_gen(width=6))+
+  scale_x_continuous(labels = function(x) x+2000, breaks = seq(0,18,3))+
+  scale_y_continuous(position = "right")+
+   labs(x= " ", y = " ",  color = "Slope") + scale_color_manual(values = c("maroon", "blue3"), labels = c("negative", "positive"), na.translate = F)+
+  theme(legend.position = "bottom",
+        plot.subtitle = element_text(family = "Serif"),
+        axis.text.x = element_text(angle = 45, hjust = 0.5, vjust = 0.5, face = "bold"),strip.text.x = element_text(size = 9,face = "bold"),
+        axis.text.y = element_text(size = 9,face = "bold"))+
+  ggtitle("Separate linear model fit on average reading scores across the country")
+dev.off()
+```
+
+```{r}
+pdf("Science.fit.pdf",
+    width = 12,
+    height = 8)
+ggplot(data = Science_Pisa_Europe_Data1,
+         aes(x=year_orig, y=science))+
+  geom_point(color = "grey25")+
+   geom_abline(data=Science_Model_IS, 
+               aes(slope=slope, intercept= `(Intercept)`,color = factor(slopesign)))+
+  facet_ragged_rows(vars(facet), vars(reorder(Country, slope)),scales = "free_y",
+                    switch = "y", labeller=label_wrap_gen(width=6))+
+  scale_x_continuous(labels = function(x) x+2000, breaks = seq(0,18,3))+
+  scale_y_continuous(position = "right")+
+   labs(x= " ", y = " ",  color = "Slope") + scale_color_manual(values = c("maroon", "blue3"), labels = c("negative", "positive"), na.translate = F)+
+  theme(legend.position = "bottom",
+        plot.subtitle = element_text(family = "Serif"),
+        axis.text.x = element_text(angle = 45, hjust = 0.5, vjust = 0.5, face = "bold"),strip.text.x = element_text(size = 9,face = "bold"),
+        axis.text.y = element_text(size = 9,face = "bold"))+
+  ggtitle("Separate linear model fit on average Science scores across the country")
+dev.off()
+```
+
+### Filter out Germany, Liechtenstein, Luxembourg, and United Kingdom.
+
+```{r}
+Q <- c("Germany", "Liechtenstein", "Luxembourg", "United Kingdom")
+
+M <- ggplot(data = filter(Math_Pisa_Europe_Data1, Country %in% Q),
+         aes(x=year_orig, y=math))+
+  geom_point(color = "grey25")+
+   geom_abline(data=filter(Math_Model_IS, Country %in% Q), 
+               aes(slope=slope, intercept= `(Intercept)`,color = factor(slopesign)))+
+  facet_wrap(~Country, scales = "free_y")+
+  scale_x_continuous(labels = function(x) x+2000, breaks = seq(0,18,3))+
+  scale_y_continuous(position = "right")+
+   labs(x= " ", y = " ",  color = "Slope") + scale_color_manual(values = c("maroon", "blue3"), labels = c("negative", "positive"), na.translate = F)+
+  theme(legend.position = "none",
+        plot.subtitle = element_text(family = "Serif"),
+        plot.title = element_text(size = 9,face = "bold"),
+        axis.text.x = element_text(angle = 45, hjust = 0.5, vjust = 0.5, face = "bold"),strip.text.x = element_text(size = 9,face = "bold"),
+        axis.text.y = element_text(size = 8,face = "bold"))+
+  ggtitle("lm fit on average math scores")
+
+R <- ggplot(data = filter(Read_Pisa_Europe_Data1, Country %in% Q),
+         aes(x=year_orig, y=read))+
+  geom_point(color = "grey25")+
+   geom_abline(data=filter(Read_Model_IS, Country %in% Q), 
+               aes(slope=slope, intercept= `(Intercept)`,color = factor(slopesign)))+
+  facet_wrap(~Country, scales = "free_y")+
+  scale_x_continuous(labels = function(x) x+2000, breaks = seq(0,18,3))+
+  scale_y_continuous(position = "right")+
+   labs(x= " ", y = " ",  color = "Slope") + scale_color_manual(values = c("maroon", "blue3"), labels = c("negative", "positive"), na.translate = F)+
+  theme(legend.position = "none",
+        plot.subtitle = element_text(family = "Serif"),
+        plot.title = element_text(size = 9,face = "bold"),
+        axis.text.x = element_text(angle = 45, hjust = 0.5, vjust = 0.5, face = "bold"),strip.text.x = element_text(size = 9,face = "bold"),
+        axis.text.y = element_text(size = 8,face = "bold"))+
+  ggtitle("lm fit on average reading scores")
+
+S <- ggplot(data = filter(Science_Pisa_Europe_Data1, Country %in% Q),
+         aes(x=year_orig, y=science))+
+  geom_point(color = "grey25")+
+   geom_abline(data=filter(Science_Model_IS, Country %in% Q), 
+               aes(slope=slope, intercept= `(Intercept)`,color = factor(slopesign)))+
+  facet_wrap(~Country, scales = "free_y")+
+  scale_x_continuous(labels = function(x) x+2000, breaks = seq(0,18,3))+
+  scale_y_continuous(position = "right")+
+   labs(x= " ", y = " ",  color = "Slope") + scale_color_manual(values = c("maroon", "blue3"), labels = c("negative", "positive"), na.translate = F)+
+  theme(legend.position = "none",
+        plot.subtitle = element_text(family = "Serif"),
+        plot.title = element_text(size = 9,face = "bold"),
+        axis.text.x = element_text(angle = 45, hjust = 0.5, vjust = 0.5, face = "bold"),strip.text.x = element_text(size = 9,face = "bold"),
+        axis.text.y = element_text(size = 8,face = "bold"))+
+  ggtitle("lm on average science scores")
+
+M+R+S
+```
+

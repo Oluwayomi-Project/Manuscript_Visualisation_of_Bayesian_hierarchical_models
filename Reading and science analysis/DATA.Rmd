@@ -1,0 +1,129 @@
+---
+title: "Cross-checking the reading and science data for some selcetef countries"
+author: "Oluwayomi Akinfenwa"
+date: "11/22/2023"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+options(knitr.duplicate.label = 'allow')
+```
+
+- `pisa.Rdata` gives the result of `learningtower::load_student("all")`
+
+```{r learningtower}
+library(learningtower)
+library(dplyr)
+
+pisaFile <- here::here("SavedData", "pisa.Rdata")
+if (file.exists(pisaFile)){
+  load(pisaFile)
+}else {
+  dir.create(here::here("SavedData"))
+  pisa <- learningtower::load_student("all")
+  save( pisa, file=pisaFile)
+}
+
+data(countrycode)
+
+read_pisa_data <- pisa |>
+  mutate(country = recode_factor(country, "ROM" = "ROU"),
+         year = as.numeric(as.character(year))) |>
+  select(year, country, student_id, read, stu_wgt) |>
+  summarise(read = weighted.mean(read, stu_wgt, na.rm = T), 
+            .by = c(year, country)) |>
+  mutate(year_orig = year - min(year))
+
+science_pisa_data <- pisa |>
+  mutate(country = recode_factor(country, "ROM" = "ROU"),
+         year = as.numeric(as.character(year))) |>
+  select(year, country, student_id, science, stu_wgt) |>
+  summarise(science = weighted.mean(science, stu_wgt, na.rm = T), 
+            .by = c(year, country)) |>
+  mutate(year_orig = year - min(year))
+```
+
+The documentation for learning-tower says: 
+*In the student_subset_2018 and school data, there are three common columns, school_id, country and year. It should be noted that school_id is only meaningful within a country within a specific year; meaning that when we join the two data, we need to use the keys c("school_id", "country", "year").*
+So we cannot look at school data over time.
+
+In the pisa data, Romania changes from ROM in 2000 to ROU in other years. These are all now ROU. The pisa data has 99 countries.
+
+*The pisa_data has 433 observations from 99 countries because Romania has two country code*
+
+### Loading the UNSD data for geographical classification of countries.
+
+```{r regions}
+UNSD <- read.csv(here::here("UNSD — Methodology.csv"))
+
+Regions <- UNSD |> select(c("ISO.alpha3.Code","Region.Name", 
+                               "Sub.region.Name"))
+
+# left joining the UNSD with the countrycode from PISA
+country_reg <- countrycode |>
+  filter(country != "ROM") |>
+  left_join(Regions, join_by(country == ISO.alpha3.Code))
+
+# Renaming the variables
+names(country_reg)[2] <- 'Country'
+names(country_reg)[3] <- 'Continent'
+names(country_reg)[4] <- 'Region'
+
+```
+
+*The UNSD csv file has 249 countries and 18 countries that are not in the pisa/ countrycode data are also not in this unsd data. Leaving us with 99-18 = `81 countries`*.
+
+### Loading the income classification from the WDI package.
+
+```{r}
+library(WDI)
+WDI <- WDI_data$country
+
+WDI <- WDI |> 
+  select(c("iso3c", "income")) |>
+  mutate(income = recode_factor(income,
+        "Lower middle income" = "Middle Income",
+        "Upper middle income" = "Middle Income",
+        "High income" = "High Income"))
+
+names(WDI)[2] <- "Income"
+
+# Joining the WDI data with the countrycode data.
+
+countrycode_reg_inc <- country_reg |>
+  left_join(WDI, join_by(country == iso3c))
+```
+
+*The WDI data has 299 countries. we observe that the same countries that are missing in the pisa_data when compared with UNSD data is also missing in the WDI data*
+
+Hence, we proceed to joining the pisa_data with the country, region, and income information(countrycode_reg_inc).
+
+```{r pisa_data}
+pisaFileReads <- here::here("SavedData", "pisar.Rdata")
+pisaFileSciences <- here::here("SavedData", "pisas.Rdata")
+
+## Reading
+Read_Pisa_Data <- read_pisa_data |>
+  left_join(countrycode_reg_inc, join_by(country)) |>
+  na.omit()
+
+Read_Pisa_Data <- Read_Pisa_Data |> 
+  select(-country)
+
+## Science
+Science_Pisa_Data <- science_pisa_data |>
+  left_join(countrycode_reg_inc, join_by(country)) |>
+  na.omit()
+
+Science_Pisa_Data <- Science_Pisa_Data |> 
+  select(-country)
+
+save(Read_Pisa_Data, file =pisaFileReads)
+save(Science_Pisa_Data, file =pisaFileSciences)
+```
+
+*The original pisa data set has 433 observations, By merging the two data set, we have 406 observations in total with 7 variables - year, math score, year_orig, country, continent, region, and income*
+
+
+
