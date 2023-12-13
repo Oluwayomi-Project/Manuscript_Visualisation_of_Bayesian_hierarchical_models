@@ -406,11 +406,40 @@ PISA_Data <- PISA_Data |>
 save(PISA_Data, file =pisaFileMaths)
 ```
 
-*The original pisa data set has 462 observations, By merging the two data set, we have 439 observations, 91 countries in total with 7 variables - year, math score, year_orig, country, continent, region, and income. Some ISO code does not have a valid name in the WDI package we used to give the country names.*
+*The original pisa data set has 462 observations, By merging the two data set, we have 440 observations, 91 countries in total with 7 variables - year, math score, year_orig, country, continent, region, and income. Some ISO code does not have a valid name in the WDI package we used to give the country names.*
+
+**Side - For future use**
+
+```{r}
+## I want to create a data set with countries, its ISO Code, country name, region only.
+## This is necessary for geo_facet.
+ISO_Code <- here::here("Saved_PISA_Data", "ISO Code.Rdata")
+
+ISO_Group <- PISA_data |> 
+  select(CNT, Country, Continent) |>
+  unique()
+save(ISO_Group, file =ISO_Code)
+```
 
 
+### Ukraine is missing in 2022 data
 
+```{r, Data_2022_ISOcheck}
+ B <-levels(factor(DATA_2022$CNT))
 
+A <- PISA_data |>
+  filter(year == "2022")
 
+X <-intersect(DATA_2022$CNT, A$CNT)
 
+XX <- setdiff(DATA_2022$CNT, A$CNT)
+  
+#XX revealed that "KSV" "QAZ" "QUR" "TAP"
 
+## In PISA_2022 documentary 'dictstudent22' KSV rep KOSOVO, In WDI data, the ISO code for KOSOVO is XKX
+## TAP rep Chinese Taipei, In WDI data, It is called "Taiwan, China" with ISO code TWN.
+## "QUR" rep Ukrainian region, In WDI data, the ISO code for Ukraine is UKR
+## "QAZ" rep Azerbaijan, In WDI data, the ISO code for Azerbaijan is AZE.
+
+### Hence the need to recode the factor in DATA_2022$CNT to these ISO code.
+```
