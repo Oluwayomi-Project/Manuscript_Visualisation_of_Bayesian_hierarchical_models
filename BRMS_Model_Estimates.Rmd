@@ -1,7 +1,7 @@
 ---
-title: "JAGS Model estimates"
+title: "BRMS Model estimates"
 author: "Oluwayomi Akinfenwa"
-date: "13/11/2023"
+date: "13/12/2023"
 output:
   html_document:
     toc: yes
