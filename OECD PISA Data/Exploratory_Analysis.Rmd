@@ -49,16 +49,6 @@ load(here::here("Saved_PISA_Data", "pisamaths.Rdata"))
 
 ```{r Europe}
 Pisa_Europe_Data <- PISA_Data |> filter(Continent == "Europe") |> arrange(Country)
-
-## For the sake of our data visualisation, below are some name cleaning.
-
-Pisa_Europe_Data <- Pisa_Europe_Data |>
-  mutate(Country = recode_factor( Country,
-    "Czech Republic" = "Czechia",
-    "North Macedonia" = "Macedonia",
-    "Bosnia and Herzegovina" = "Bosnia and \n Herzegovina",
-    "Russian Federation" = "Russia",
-    "Slovak Republic" = "Slovakia"))
 ```
 
 **For the European countries, we have 236 observations from 40 countries.**
