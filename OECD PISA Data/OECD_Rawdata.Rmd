@@ -34,16 +34,6 @@ library(tidyverse)
 
 ```{r}
  dir.create(here::here("Saved_PISA_Data"))
-
-pisaFile <- here::here("SavedData", "pisa.Rdata")
-if (file.exists(pisaFile)){
-  load(pisaFile)
-}else {
-  dir.create(here::here("SavedData"))
-  pisa <- learningtower::load_student("all")
-  save( pisa, file=pisaFile)
-}
-
 ```
 
 
