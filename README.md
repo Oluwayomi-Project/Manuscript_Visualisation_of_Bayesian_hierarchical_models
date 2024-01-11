@@ -36,7 +36,7 @@ Such that;
 
 $\mu_i[i] <- \alpha.j [C[i]] + \beta.j[C[i]]*(x.i[i])$ 
 
-$\sigma_y[i]^-2 <- \sqrt(\sigma[i]^2 + \sigma.m^2)$ 
+$\sigma_y[i]^-2 <- \sqrt{(\sigma[i]^2 + \sigma.m^2)}$ 
 
 Priors were established for the country-specific alphas and betas, as well as for $\sigma$.m. Introducing a prior on $\sigma$.m was crucial for facilitating the posterior setup, enabling predictions for missing data points and future estimations. This process was reiterated with a hyper-parameterization of  $\alpha$ and $\beta$, ensuring that country estimates originated from a common prior distribution. 
 
