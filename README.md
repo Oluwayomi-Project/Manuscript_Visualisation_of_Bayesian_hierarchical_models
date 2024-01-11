@@ -30,15 +30,15 @@ To accomplish this, we employed geo_facet to group countries according to their 
 
 ### Hierarchical model fitting - .Rmd
 In our hierarchical model, we employed a JAGS model where
-y.i ~ dnorm(\mu_i[i], \sigma_y[i]^-2), 
+$y.i ~ dnorm(\mu_i[i], \sigma_y[i]^-2)$ , 
 
 Such that; 
 
-\mu_i[i] <- \alpha.j [C[i]] + \beta.j[C[i]]*(x.i[i]) 
+$\mu_i[i] <- \alpha.j [C[i]] + \beta.j[C[i]]*(x.i[i])$ 
 
-\sigma_y[i]^-2 <- \sqrt(\sigma[i]^2 + \sigma.m^2) 
+$\sigma_y[i]^-2 <- \sqrt(\sigma[i]^2 + \sigma.m^2)$ 
 
-Priors were established for the country-specific alphas and betas, as well as for \sigma.m. Introducing a prior on \sigma.m was crucial for facilitating the posterior setup, enabling predictions for missing data points and future estimations. This process was reiterated with a hyper-parameterization of  \alpha and \beta, ensuring that country estimates originated from a common prior distribution. 
+Priors were established for the country-specific alphas and betas, as well as for $\sigma$.m. Introducing a prior on $\sigma$.m was crucial for facilitating the posterior setup, enabling predictions for missing data points and future estimations. This process was reiterated with a hyper-parameterization of  $\alpha$ and $\beta$, ensuring that country estimates originated from a common prior distribution. 
 
 Subsequently, we extended the model into a hierarchical structure, incorporating three levels (Region, Income, and Income-Region). The model was adapted to assign hyper-parameters to countries based on their respective hierarchical structures. Our rationale behind specifying distinct hyper-parameters according to the hierarchical structure was to evaluate the influence of information sharing within specific groups.
 
