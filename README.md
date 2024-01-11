@@ -24,6 +24,6 @@ The standard error serves as a measure of variability in the weighted mean of ea
 ### Exploratory Data Analysis -.Rmd
 We introduced a novel variable named Income_Region by combining the Region and Income variables. Our objective is to establish additional variables with a hierarchical structure for the Bayesian model, aiming to assess the impact of this structure on model estimates.
 
-Subsequently, we fitted separate linear models (lm) with weights set to 1/se^2 for the 40 European countries involved in the PISA survey. The model estimates derived from these fitted models were utilized to visually represent the model fit against the observed data. The countries were categorized based on their geographical regions and income levels.
+Subsequently, we fitted separate linear models (lm) with weights set to 1/se^2 for the 40 European countries involved in the PISA survey. The model estimates derived from these fitted models were utilized to visually present the model fit on the observed data. The countries were grouped based on their geographical regions and income levels.
 
 To accomplish this, we employed geo_facet to group countries according to their respective regions and facet_wrap for income grouping. The resulting plots were saved as "fit_grouped_by region.pdf" and "fit_grouped_by income.pdf," respectively.
