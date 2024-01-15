@@ -48,7 +48,7 @@ The estimates for parameters and hyperparameters derived from the fitted model a
 
 ### Investigating Covid-impact – Analysis.Rmd 
 
- filtered out observational data points for the year 2022, then applied an lm model and assessed the slope before and after the onset of COVID. The post-COVID slope is predominantly lower and negative compared to the pre-COVID slope, indicating a negative impact of COVID on the overall slope of the PISA dataset.
+I filtered out observational data points for the year 2022, then applied an lm model and assessed the slope before and after the onset of COVID. The post-COVID slope is predominantly lower and negative compared to the pre-COVID slope, indicating a negative impact of COVID on the overall slope of the PISA dataset.
 
 Subsequently, I calculated the overall sigma of the model for both post- and pre-COVID periods. The overall variation post-COVID is higher than pre-COVID. Similarly, the hyper-parameter intercept estimate variation for post-COVID is lower than the pre-COVID hyper-parameter variation.
 
