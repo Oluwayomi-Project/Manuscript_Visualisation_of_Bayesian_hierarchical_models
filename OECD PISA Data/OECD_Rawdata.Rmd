@@ -422,7 +422,6 @@ PISA_data <- PISA_data |>
   mutate(Country = recode_factor( Country,
     "Czech Republic" = "Czechia",
     "North Macedonia" = "Macedonia",
-    "Bosnia and Herzegovina" = "Bosnia and \n Herzegovina",
     "Russian Federation" = "Russia",
     "Slovak Republic" = "Slovakia"))
 
