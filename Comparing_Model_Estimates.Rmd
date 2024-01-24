@@ -1241,8 +1241,13 @@ BRMS_fit5 <- add_criterion(IncomeRegion_BRMSModel, "waic")
 
 loo_compare(BRMS_fit1, BRMS_fit2, BRMS_fit3, BRMS_fit4, BRMS_fit5, criterion = "waic")
 
-JAGS_fit1 <- loo(Ind_C_Model)
-Ind_C_Model$DIC
 
+#### Computing the DIC of the JAGS Model
+Ind_C_Model$BUGSoutput$DIC
+C_Model$BUGSoutput$DIC
+Region_Model$BUGSoutput$DIC
+Income_Model$BUGSoutput$DIC
+IR_Model$BUGSoutput$DIC
+```
 ```
 
