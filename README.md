@@ -37,8 +37,6 @@ Such that;
 
 $\mu_i[i] <- \alpha_j [C[i]] + \beta_j[C[i]]*(x.i[i])$ 
 
-$\sigma_y[i]^{-2} <- \sqrt{(\sigma[i]^2 + \sigma.m^2)}$ 
-
 Priors were established for the country-specific alphas and betas, as well as for $\sigma$.m. Introducing a prior on $\sigma$.m was crucial for facilitating the posterior setup, enabling predictions for missing data points and future estimations. This process was reiterated with a hyper-parameterization of  $\alpha$ and $\beta$, ensuring that country estimates originated from a common prior distribution. 
 
 Subsequently, we extended the model into a hierarchical structure, incorporating three levels (Region, Income, and Income-Region). The model was adapted to assign hyper-parameters to countries based on their respective hierarchical structures. Our rationale behind specifying distinct hyper-parameters according to the hierarchical structure was to evaluate the influence of information sharing within specific groups.
