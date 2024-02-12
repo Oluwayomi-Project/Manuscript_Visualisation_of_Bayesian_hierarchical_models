@@ -11,6 +11,9 @@
 
 **This Rmarkdown file contains the codes for the exploratory data analysis.**
 
+### 03_Hierarchical model.Rmd
 
+The proposed models for the PISA analysis are fitted here, but there are many divergent transition and majority of the models have this error message: 
+**Warning: Bulk Effective Samples Size (ESS) is too low, indicating posterior means and medians may be unreliable.**
 
 
