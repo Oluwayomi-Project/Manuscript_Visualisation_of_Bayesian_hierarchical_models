@@ -37,7 +37,7 @@ library(brms)
 Loading the two Rdata containing the PISA data for the European countries. This data is saved as Europe_Pisamaths.Rdata in the folder called PISA_Data.
 
 ```{r loading the data}
-load(here::here("PISA_Data", "Europe_Pisamaths.Rdata"))
+load(here::here("BAYSM_2024", "PISA_Data", "Europe_Pisamaths.Rdata"))
 
 #Filtering the data for 2022 since we have decided to make predictions with the models for year 2022.
 PISA_Europe_Data <- Pisa_Europe_Data |>
