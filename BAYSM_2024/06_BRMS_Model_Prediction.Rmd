@@ -41,7 +41,7 @@ library(ggragged)
 Loading the PISA data for the European countries Europe_Pisamaths.Rdata.
 
 ```{r loading the data}
-load(here::here("PISA_Data", "Europe_Pisamaths.Rdata"))
+load(here::here("BAYSM_2024","PISA_Data", "Europe_Pisamaths.Rdata"))
 
 #We have decided to remove year 2022 from the analysis and make prediction for 2022.
 #Hence I will filter year = 2022.
