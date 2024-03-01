@@ -1,0 +1,151 @@
+---
+title: "BRMS Model estimates"
+author: "Oluwayomi Akinfenwa"
+date: "19/01/2024"
+output:
+  html_document:
+    toc: yes
+    toc_depth: '4'
+    df_print: paged
+  bookdown::html_document2:
+    toc: no
+    toc_float: yes
+    toc_depth: 4
+    number_sections: yes
+  pdf_document:
+    toc: yes
+    toc_depth: '4'
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+options(knitr.duplicate.label = 'allow')
+```
+
+### Loading necessary packages
+
+```{r, libraries, include = FALSE}
+library(stringr)
+library(tidybayes)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(rjags)
+library(R2jags)
+library(bayesplot)
+library(patchwork)
+library(ggragged)
+#library(geofacet)
+```
+
+Loading the PISA data for the European countries - Europe_Pisamaths.Rdata.
+
+```{r loading the data}
+load(here::here("PISA_Data", "Europe_Pisamaths.Rdata"))
+
+# We have decided to remove year 2022 from my data and make prediction for 2022.
+# Hence i will filter year = 2022.
+PISA_Europe_Data <- Pisa_Europe_Data |>
+  filter(year != "2022")
+```
+
+### Creating the grid for the prediction
+
+```{r}
+country_names <- levels(factor(PISA_Europe_Data$Country))
+region_names <- levels(factor(PISA_Europe_Data$Region))
+income_names <- levels(factor(PISA_Europe_Data$Income))
+incomeregion_names <- levels(factor(PISA_Europe_Data$Income_Region))
+
+## Obtaining the index for the data
+mu_index <- 1:nrow(PISA_Europe_Data)
+
+## Obtaining the region indexes
+
+country_region <- PISA_Europe_Data |> group_by(Country) |>
+  summarise(Region=first(Region)) |>
+  mutate(Country_num = as.numeric(as.factor(Country))) |>
+  mutate(region_num = as.numeric(as.factor(Region)))
+
+REGION <- country_region |> select(Country, Region)
+
+## Obtaining the income indexes
+
+country_income <- PISA_Europe_Data |> group_by(Country) |>
+  summarise(Income=first(Income)) |>
+  mutate(Country_num = as.numeric(as.factor(Country))) |>
+  mutate(income_num = as.numeric(as.factor(Income)))
+         
+INCOME <- country_income |> select(Country, Income)
+
+## Obtaining the income_region indexes
+
+country_incomeregion <- PISA_Europe_Data |> group_by(Country) |>
+  summarise(Income_Region=first(Income_Region)) |>
+  mutate(Country_num = as.numeric(as.factor(Country))) |>
+  mutate(incomeregion_num = as.numeric(as.factor(Income_Region)))
+
+INCOME_REGION <- REGION |>
+  left_join(INCOME, join_by(Country))
+
+Country_region <- country_region |> left_join(INCOME, join_by(Country))
+Country_income <- country_income |> left_join(REGION, join_by(Country))
+Country_incomeregion <- country_incomeregion |> 
+  left_join(INCOME_REGION, join_by(Country))
+```
+
+```{r, message=FALSE, eval= genBRMS}
+
+Priors <- c(brms::prior(normal(500, 1000), class = Intercept),
+            brms::prior(normal(0, 50), class = b),
+            brms::prior(cauchy(30, 100), class = sigma))
+
+CountryInd_BRMSModel <- brms::brm(
+  brms::bf(math ~ (year_orig*Country)),
+  data = PISA_Europe_Data,
+  iter = 12000, 
+  prior = Priors,
+  control = list(adapt_delta = 0.99, max_treedepth = 25),
+  silent = 2, chains = 4, seed = bayes_seed)
+```
+
+#### Estimates from the independent-country-specific model
+
+```{r}
+#my observations
+# the global estimates is the estimate for Albania. Albania is used as the base country.
+# also Bosnia was messed up and unitedkingdom merged together.
+
+CountryInd_draws <-posterior::as_draws_rvars(CountryInd_BRMSModel, 
+                variable = "^b_Country|^b_Intercept",regex = TRUE) |>
+  purrr::map_dfr(as_tibble, .id = "name")|>
+  mutate(rvar=value+value[1], term = "Intercept")
+
+#Albania is used as the base country, hence the intercept estimate is the rvar for Albania.
+CountryInd_draws$rvar[1] <- CountryInd_draws$value[1]
+  
+  CountryInd_I <- CountryInd_draws |>
+  mutate(Country = stringr::str_replace_all(name, stringr::fixed("b_Country"), "")) |>
+  mutate(Country = stringr::str_replace_all(Country, stringr::fixed("b_Intercept"), "Albania")) |>
+  mutate(Country = stringr::str_replace_all(Country,stringr::fixed("Bosnia&Herzegovina"), "Bosnia& Herzegovina"))|>
+  mutate(Country = stringr::str_replace_all(Country, stringr::fixed("UnitedKingdom"), "United Kingdom")) |>
+  left_join(Country_region, join_by(Country== Country))|>
+  select(Country,Region, Income, term, rvar)
+  
+  #Slope estimates
+CountrySlop_draws <- posterior::as_draws_rvars(CountryInd_BRMSModel, 
+                    variable = "^b_year_orig",regex = TRUE) |>
+  purrr::map_dfr(as_tibble, .id = "name")|>
+  mutate(rvar=value+value[1], term = "year_orig")
+
+#Albania is used as the base country, hence the intercept estimate is the rvar for Albania.
+CountrySlop_draws$rvar[1] <- CountrySlop_draws$value[1]
+
+CountryInd_S <- CountrySlop_draws |>
+  mutate(Country = stringr::str_replace_all(name, stringr::fixed("b_year_orig:Country"), "")) |>
+  mutate(Country = stringr::str_replace_all(Country, stringr::fixed("b_year_orig"), "Albania")) |>
+  mutate(Country = stringr::str_replace_all(Country,stringr::fixed("Bosnia&Herzegovina"), "Bosnia& Herzegovina"))|>
+  mutate(Country = stringr::str_replace_all(Country, stringr::fixed("UnitedKingdom"), "United Kingdom")) |>
+  left_join(Country_region, join_by(Country== Country))|>
+  select(Country,Region, Income, term, rvar)
+```
