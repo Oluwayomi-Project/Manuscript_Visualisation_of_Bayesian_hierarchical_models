@@ -89,8 +89,9 @@ Country_incomeregion <- country_incomeregion |> left_join(INCOME_REGION, join_by
 # Specifying the base_year as 2018.
 base_year <- 2018
 
-## Creating the pred_grid.
-pred_grid <- PISA_Europe_Data |>
+## Creating the pred_grid for the entire data set
+## For JAGS model, we set up the prediction alongside the model specification
+pred_grid <- Pisa_Europe_Data |>
   modelr::data_grid(Country,year) |>
   mutate(year_orig = year - base_year) |>
   mutate(Country_num = as.numeric(as.factor(Country)),
@@ -121,11 +122,11 @@ if(file.exists(here::here("Manuscript_Models",
 #Hence, This model will be fitted excluding Belarus, Ukraine, and Bosnia& Herzergovina.
 SCountry <- c("Belarus", "Bosnia& Herzegovina", "Ukraine")
 
-SPISA_Europe_Data <- PISA_Europe_Data |>
+SPisa_Europe_Data <- Pisa_Europe_Data |>
   filter(!Country %in% SCountry)
 
 #Creating pred for the SCountry
-Spred_grid <- SPISA_Europe_Data |>
+Spred_grid <- SPisa_Europe_Data |>
   modelr::data_grid(Country,year) |>
   mutate(year_orig = year - base_year) |>
   mutate(Country_num = as.numeric(as.factor(Country)),
