@@ -26,6 +26,8 @@ options(knitr.duplicate.label = 'allow')
 
 ```{r, libraries, include = FALSE}
 source(knitr::purl("04_BRMS_Model_Estimates.Rmd"))
+
+#sys.source("04_BRMS_Model_Estimates.R", envir = knitr::knit_global())
 ```
 
 A plot showing the model estimates and credible intervals (80% and 95%), facet by country and connecting the dots for the estimates from the 4 models (An independent model fits, Country-specific model and Region, Income, Income-Region hierarchical models).
