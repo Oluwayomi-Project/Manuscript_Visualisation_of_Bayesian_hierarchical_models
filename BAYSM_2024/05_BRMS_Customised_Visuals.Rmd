@@ -1,0 +1,967 @@
+---
+title: "Visuals to compare the model estimates"
+author: "Oluwayomi Akinfenwa"
+date: "29/02/2024"
+output:
+  html_document:
+    toc: yes
+    toc_depth: '4'
+    df_print: paged
+  bookdown::html_document2:
+    toc: no
+    toc_float: yes
+    toc_depth: 4
+    number_sections: yes
+  pdf_document:
+    toc: yes
+    toc_depth: '4'
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+options(knitr.duplicate.label = 'allow')
+```
+
+### Loading necessary packages
+
+```{r, libraries, include = FALSE}
+library(stringr)
+library(tidybayes)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(brms)
+library(bayesplot)
+library(patchwork)
+library(ggragged)
+library(geofacet)
+library(grid)
+```
+
+Loading the PISA data for the European countries - Europe_Pisamaths.Rdata.
+
+```{r loading the data}
+load(here::here("PISA_Data", "Europe_Pisamaths.Rdata"))
+
+# We have decided to remove year 2022 from my data and make prediction for 2022.
+# Hence i will filter year = 2022.
+PISA_Europe_Data <- Pisa_Europe_Data |>
+  filter(year != "2022")
+```
+
+### Creating the grid for the prediction
+
+```{r}
+country_names <- levels(factor(PISA_Europe_Data$Country))
+region_names <- levels(factor(PISA_Europe_Data$Region))
+income_names <- levels(factor(PISA_Europe_Data$Income))
+incomeregion_names <- levels(factor(PISA_Europe_Data$Income_Region))
+
+## Obtaining the index for the data
+mu_index <- 1:nrow(PISA_Europe_Data)
+
+## Obtaining the region indexes
+country_region <- PISA_Europe_Data |> group_by(Country) |>
+  summarise(Region=first(Region)) |>
+  mutate(Country_num = as.numeric(as.factor(Country))) |>
+  mutate(region_num = as.numeric(as.factor(Region)))
+
+REGION <- country_region |> select(Country, Region)
+
+## Obtaining the income indexes
+country_income <- PISA_Europe_Data |> group_by(Country) |>
+  summarise(Income=first(Income)) |>
+  mutate(Country_num = as.numeric(as.factor(Country))) |>
+  mutate(income_num = as.numeric(as.factor(Income)))
+         
+INCOME <- country_income |> select(Country, Income)
+
+## Obtaining the income_region indexes
+country_incomeregion <- PISA_Europe_Data |> group_by(Country) |>
+  summarise(Income_Region=first(Income_Region)) |>
+  mutate(Country_num = as.numeric(as.factor(Country))) |>
+  mutate(incomeregion_num = as.numeric(as.factor(Income_Region)))
+
+INCOME_REGION <- REGION |>
+  left_join(INCOME, join_by(Country))
+
+Country_region <- country_region |> left_join(INCOME, join_by(Country))
+Country_income <- country_income |> left_join(REGION, join_by(Country))
+Country_incomeregion <- country_incomeregion |> 
+  left_join(INCOME_REGION, join_by(Country))
+```
+
+## Loading the hierarchical models from the saved R.Data file
+
+```{r}
+#Independent-Country specific model
+load(here::here("Manuscript_Models", "CountryInd_BRMSModel.Rdata"))
+
+#Country specific model
+load(here::here("Manuscript_Models", "Country_BRMSModel.Rdata"))
+
+#Region hierarchical model
+load(here::here("Manuscript_Models", "Region_BRMSModel.Rdata"))
+
+#Income hierarchical model
+load(here::here("Manuscript_Models", "Income_BRMSModel.Rdata"))
+
+#Income-Region hierarchical model
+load(here::here("Manuscript_Models", "IncomeRegion_BRMSModel.Rdata"))
+```
+
+### Pulling the estimates from all the fitted models
+
+#### Estimates from the independent-country-specific model
+
+```{r}
+#my observations
+# the global estimates is the estimate for Albania. Albania is used as the base country.
+# also Bosnia was messed up and unitedkingdom merged together.
+#hence, the str_replace_all might not work to fix this and I have to fix this manually.
+
+CountryInd_draws <-posterior::as_draws_rvars(CountryInd_BRMSModel, 
+                variable = "^b_Country|^b_Intercept", regex = TRUE) |>
+  purrr::map_dfr(as_tibble, .id = "name")|>
+  mutate(rvar=value+value[1])
+
+#Albania is used as the base country, hence the intercept estimate is the rvar for Albania.
+CountryInd_draws$rvar[1] <- CountryInd_draws$value[1]
+  
+  CountryInd_I <- CountryInd_draws |>
+  mutate(Country = stringr::str_replace_all(name, stringr::fixed("b_Country"), "")) |>
+  mutate(Country = stringr::str_replace_all(Country, stringr::fixed("b_Intercept"), "Albania")) |>
+  mutate(Country = stringr::str_replace_all(Country, stringr::fixed("UnitedKingdom"), "United Kingdom")) |>
+  right_join(Country_region, join_by(Country== Country))|>
+    mutate(term = "year_orig") |>
+  select(Country,Region, Income, term, rvar)
+
+#Slope estimates
+CountrySlop_draws <- posterior::as_draws_rvars(CountryInd_BRMSModel, 
+                    variable = "^b_year_orig",regex = TRUE) |>
+  purrr::map_dfr(as_tibble, .id = "name")|>
+  mutate(rvar=value+value[1])
+
+#Albania is used as the base country, hence the intercept estimate is the rvar for Albania.
+CountrySlop_draws$rvar[1] <- CountrySlop_draws$value[1]
+
+CountryInd_S <- CountrySlop_draws |>
+  mutate(Country = stringr::str_replace_all(name, stringr::fixed("b_year_orig:Country"), "")) |>
+  mutate(Country = stringr::str_replace_all(Country, stringr::fixed("b_year_orig"), "Albania")) |>
+  mutate(Country = stringr::str_replace_all(Country, stringr::fixed("UnitedKingdom"), "United Kingdom")) |>
+  right_join(Country_region, join_by(Country== Country))|>
+  mutate(term = "year_orig") |>
+  select(Country,Region, Income, term, rvar)
+
+## Tidying the results
+CountryInd_Int <- CountryInd_I |> mutate(Intercept= median(rvar)) |>
+  select(Country, Region, Intercept)
+CountryInd_Slop <- CountryInd_S |> mutate(year_orig= median(rvar)) |>
+  select(Country, Region, year_orig)
+
+CountryInd_IS_Est <- CountryInd_Int |>
+  left_join(CountryInd_Slop, join_by(Country, Region))
+
+CountryInd_Int_Est <- CountryInd_I |>
+  mutate(Model = "Independent \nModel") |>
+  select(Country, Model, rvar)
+
+CountryInd_Slop_Est <- CountryInd_S|>
+  mutate(Model = "Independent \nModel") |>
+  select(Country, Model, rvar)
+```
+
+#### Estimates from the country-specific model
+
+```{r}
+## Pulling the intercept results. The global intercept (b_Intercept) and the country offsets.
+Country_I <- spread_rvars(Country_BRMSModel, r_Country[Country,term], b_Intercept) |>
+  filter(term == "Intercept") |>
+  mutate(Country = stringr::str_replace_all(Country, fixed("."), " ")) |>
+  mutate(r_Country = r_Country+ b_Intercept) |>
+  rename(rvar=r_Country) |>
+  left_join(Country_region, join_by(Country== Country))
+
+Country_Int <- Country_I|>
+  select(Country,Region, term, rvar)
+
+## Pulling the slope results. The global slope (b_year_orig) and the country offsets.
+Country_S <- spread_rvars(Country_BRMSModel, r_Country[Country,term], b_year_orig) |>
+  filter(term == "year_orig") |>
+  mutate(Country = stringr::str_replace_all(Country, fixed("."), " ")) |>
+  mutate(r_Country = r_Country+ b_year_orig) |>
+   rename(rvar=r_Country) |>
+  left_join(Country_region, join_by(Country== Country))
+
+Country_Slop <- Country_S|>
+  select(Country,Region, term, rvar)
+
+## Tidying the estimates
+Country_IS <- rbind(Country_Int, Country_Slop)
+
+Country_IS_Est <- Country_IS |> mutate(coef=median(rvar))|> 
+  select(-rvar)|>
+  pivot_wider(values_from=coef, names_from=term)
+
+## Intercept Estimates
+Country_Int_Est <- Country_I |>
+  mutate(Model = "Country \nModel") |>
+  select(c(Country, Model, rvar))
+
+## Slope Estimates
+Country_Slop_Est <- Country_S |>
+  mutate(Model = "Country \nModel") |>
+  select(c(Country,Model, rvar))
+
+#The hierarchical estimate for the country-specific model is the b_intercept (global estimate)
+Country_Int_est <- Country_I |>
+  mutate(Model = "Country \nModel") |>
+  select(c(Country, Model,rvar = b_Intercept))
+
+Country_Slop_est <- Country_S |>
+  mutate(Model = "Country \nModel") |>
+  select(c(Country, Model,rvar= b_year_orig))
+```
+
+#### Estimates from the Region hierarchical model
+
+```{r}
+Region_int <- spread_rvars(Region_BRMSModel, r_Region[group1,term], b_Intercept) |>
+  filter(term == "Intercept") |>
+  mutate(group1 = stringr::str_replace_all(group1, fixed("."), " ")) |>
+  mutate(r_Region = r_Region+ b_Intercept) |>
+  rename(rvar=r_Region, Region = group1) |>
+  select(Region, term, rvar)
+
+Region_slop <- spread_rvars(Region_BRMSModel, r_Region[group1,term], b_year_orig) |>
+  filter(term == "year_orig") |>
+  mutate(group1 = stringr::str_replace_all(group1, fixed("."), " ")) |>
+  mutate(r_Region = r_Region+  b_year_orig) |>
+  rename(rvar=r_Region, Region = group1)|>
+  select(Region, term, rvar)
+
+Region_is <- rbind(Region_int,Region_slop) 
+
+#Extending the estimates across all the countries
+
+Region_Int <- Region_int |> 
+  right_join(Country_region, by = join_by(Region == Region)) |>
+  select(Country,Region, Income, term, rvar)
+
+Region_Slop <- Region_slop |> 
+  right_join(Country_region, by = join_by(Region == Region)) |>
+  select(Country,Region, Income, term, rvar)
+
+Region_IS <- rbind(Region_Int, Region_Slop)
+  
+## The region country estimates
+
+Rcountry_Int <- spread_rvars(Region_BRMSModel, r_Region[group1,term],r_Country[group,term],b_Intercept) |>
+  filter(term == "Intercept") |>
+  mutate(group1 = stringr::str_replace_all(group1, fixed("."), " "), 
+         group = stringr::str_replace_all(group, fixed("."), " ")) |>
+  right_join(Country_region, by = join_by(group==Country,group1==Region)) |> #this join everything from the country_region with its intercession from the model result
+  mutate(r_Country =  r_Country+ r_Region+ b_Intercept) |>
+  rename(rvar=r_Country,Region=group1, Country =group) |>
+  select(Country,Region, Income, term, rvar)
+
+Rcountry_Slop <- spread_rvars(Region_BRMSModel, r_Region[group1,term],r_Country[group,term],b_year_orig) |>
+  filter(term == "year_orig") |>
+  mutate(group1 = stringr::str_replace_all(group1, fixed("."), " "), 
+         group = stringr::str_replace_all(group, fixed("."), " ")) |>
+  right_join(Country_region, by = join_by(group==Country,group1==Region)) |>
+  mutate(r_Country =  r_Country+ r_Region+ b_year_orig) |>
+  rename(rvar=r_Country,Region=group1, Country =group) |>
+  select(Country,Region, Income, term, rvar)
+
+Rcountry_IS <- rbind(Rcountry_Int, Rcountry_Slop) 
+```
+
+### Tidying the estimates from the Region hierarchical model
+
+```{r}
+#median estimates
+Region_IS_Est <- Region_IS |> mutate(coef=median(rvar))|>
+  select(-rvar)|>
+  pivot_wider(values_from=coef, names_from=term)
+
+Rcountry_IS_Est <- Rcountry_IS |> mutate(coef=median(rvar))|> 
+  select(-rvar)|>
+  pivot_wider(values_from=coef, names_from=term)
+
+## Credible interval
+## Intercept Estimates
+#Hierarchy estimates
+Region_Int_est <- Region_Int |>
+  mutate(Model = "Region \nModel")|>
+  select(Country, Model,rvar)
+#Country estimates
+Region_Int_Est <- Rcountry_Int |> 
+  mutate(Model = "Region \nModel")|>
+  select(c(Country,Model,rvar))
+## Slope Estimates
+#Hierarchy estimates
+Region_Slop_est <- Region_Slop |>
+  mutate(Model = "Region \nModel")|>
+  select(c(Country,Model,rvar))
+#Country estimates
+Region_Slop_Est <- Rcountry_Slop |> 
+  mutate(Model = "Region \nModel")|>
+  select(Country, Model,rvar)
+```
+
+#### Estimates from the income hierarchical model
+
+```{r}
+Income_int <- spread_rvars(Income_BRMSModel, r_Income[group1,term],b_Intercept) |>
+  filter(term == "Intercept") |>
+  mutate(group1 = stringr::str_replace_all(group1, fixed("."), " ")) |>
+  mutate(r_Income = r_Income+ b_Intercept) |>
+  rename(rvar=r_Income, Income= group1) |>
+  select(Income, term, rvar)
+
+Income_slop <- spread_rvars(Income_BRMSModel, r_Income[group1,term], b_year_orig) |>
+  filter(term == "year_orig") |>
+  mutate(group1 = stringr::str_replace_all(group1, fixed("."), " ")) |>
+  mutate(r_Income = r_Income+  b_year_orig) |>
+  rename(rvar=r_Income, Income= group1)|>
+  select(Income, term, rvar)
+Income_is <- rbind(Income_int, Income_slop)
+
+#Extending the income hierarchical estimates across the countries.
+Income_Int <- Income_int |>
+  right_join(Country_income, by = join_by(Income ==Income))|>
+  select(Country, Region, Income, term, rvar)
+
+Income_Slop <- Income_slop |>
+  right_join(Country_income, by = join_by(Income ==Income))|>
+  select(Country, Region, Income, term, rvar)
+
+Income_IS <- rbind(Income_Int, Income_Slop)
+```
+
+pulling the intercepts and slopes for each country based on the influence of the Income hierarchy
+
+```{r}
+Icountry_Int <- spread_rvars(Income_BRMSModel, r_Income[group1,term],r_Country[group,term],b_Intercept) |>
+  filter(term == "Intercept") |>
+  mutate(group1 = stringr::str_replace_all(group1, fixed("."), " "), 
+         group = stringr::str_replace_all(group, fixed("."), " ")) |>
+  right_join(Country_income, by = join_by(group==Country,group1==Income)) |> #this join everything from the country_Income with its intercession from the model result
+  mutate(r_Country =  r_Country+ r_Income+ b_Intercept) |>
+  rename(rvar=r_Country, Country = group, Income = group1) |>
+  select(Country, Income,Region, term, rvar)
+
+
+Icountry_Slop <- spread_rvars(Income_BRMSModel, r_Income[group1,term],r_Country[group,term],b_year_orig) |>
+  filter(term == "year_orig") |>
+  mutate(group1 = stringr::str_replace_all(group1, fixed("."), " "), 
+         group = stringr::str_replace_all(group, fixed("."), " ")) |>
+  right_join(Country_income, by = join_by(group==Country,group1==Income)) |>
+  mutate(r_Country =  r_Country+ r_Income+ b_year_orig) |>
+  rename(rvar=r_Country, Country = group, Income = group1) |>
+  select(Country, Income, Region, term, rvar)
+
+Icountry_IS <- rbind(Icountry_Int, Icountry_Slop) 
+```
+
+#### Tidying the estimates from the income model
+
+```{r, fig.width=10, fig.height=8}
+#Hierarchical estimates
+Income_IS_EST <- Income_IS |> mutate(coef=median(rvar))|> 
+  select(-rvar)|>
+  pivot_wider(values_from=coef, names_from=term)
+
+#Country-estimates based on the hierarchical pulling.
+Icountry_IS_Est <- Icountry_IS |> mutate(coef=median(rvar))|> 
+  select(-rvar)|>
+  pivot_wider(values_from=coef, names_from=term)
+
+## Credible interval
+## Intercept Estimates
+#Hierarchy estimates
+Income_Int_est <- Income_Int |> 
+  mutate(Model = "Income \nModel")|>
+  select(c(Country,Model,rvar))
+#Country estimates
+Income_Int_Est <- Icountry_Int |> 
+  mutate(Model = "Income \nModel")|>
+  select(Country, Model,rvar)
+## Slope Estimates
+#Hierarchy estimates
+Income_Slop_est <- Income_Slop |> 
+  mutate(Model = "Income \nModel")|>
+  select(c(Country,Model,rvar))
+#Country estimates
+Income_Slop_Est <- Icountry_Slop |> 
+  mutate(Model = "Income \nModel")|>
+  select(Country, Model,rvar)
+```
+
+#### Estimates from the IncomeRegion hierarchical model
+
+```{r}
+IncomeRegion_int <- spread_rvars(IncomeRegion_BRMSModel, r_Income_Region[group1,term],b_Intercept) |>
+  filter(term == "Intercept") |>
+  mutate(group1 = stringr::str_replace_all(group1, fixed("."), " ")) |>
+  mutate(r_Income_Region = r_Income_Region+ b_Intercept) |>
+  rename(rvar=r_Income_Region, `Income_Region` = group1) |>
+  select(Income_Region, term, rvar)
+
+IncomeRegion_slop <- spread_rvars(IncomeRegion_BRMSModel, r_Income_Region[group1,term], b_year_orig) |>
+  filter(term == "year_orig") |>
+  mutate(group1 = stringr::str_replace_all(group1, fixed("."), " ")) |>
+  mutate(r_Income_Region = r_Income_Region+  b_year_orig) |>
+  rename(rvar=r_Income_Region, `Income_Region` = group1) |>
+  select(Income_Region, term, rvar)
+
+IncomeRegion_is <- rbind(IncomeRegion_int, IncomeRegion_slop)
+
+#Extending the income-region hierarchical estimates across the countries.
+IncomeRegion_Int <- IncomeRegion_int |>
+  right_join(Country_incomeregion, by = join_by(Income_Region ==Income_Region))|>
+  select(Country, Income_Region, term, rvar)
+
+IncomeRegion_Slop <- IncomeRegion_slop |>
+  right_join(Country_incomeregion, by = join_by(Income_Region ==Income_Region))|>
+  select(Country, Income_Region, term, rvar)
+
+
+IncomeRegion_IS <- rbind(IncomeRegion_Int, IncomeRegion_Slop)
+```
+
+pulling the intercepts and slopes for each country based on the influence of the Income-Region hierarchy.
+
+```{r}
+IRcountry_Int <- spread_rvars(IncomeRegion_BRMSModel, r_Income_Region[group1,term],r_Country[group,term],b_Intercept) |>
+  filter(term == "Intercept") |>
+  mutate(group1 = stringr::str_replace_all(group1, fixed("."), " "), 
+         group = stringr::str_replace_all(group, fixed("."), " ")) |>
+  right_join(Country_incomeregion, by = join_by(group==Country,group1==Income_Region)) |> #this join everything from the country_Income with its intercession from the model result
+  mutate(r_Country =  r_Country+ r_Income_Region+ b_Intercept) |>
+  rename(rvar=r_Country, Country = group, Income_Region = group1) |>
+  select(Country, Income_Region,Region, term, rvar)
+
+
+IRcountry_Slop <- spread_rvars(IncomeRegion_BRMSModel, r_Income_Region[group1,term],r_Country[group,term],b_year_orig) |>
+  filter(term == "year_orig") |>
+  mutate(group1 = stringr::str_replace_all(group1, fixed("."), " "), 
+         group = stringr::str_replace_all(group, fixed("."), " ")) |>
+  right_join(Country_incomeregion, by = join_by(group==Country,group1==Income_Region)) |>
+  mutate(r_Country =  r_Country+ r_Income_Region+ b_year_orig) |>
+  rename(rvar=r_Country, Country = group, Income_Region = group1) |>
+  select(Country, Income_Region, Region, term, rvar)
+
+IRcountry_IS <- rbind(IRcountry_Int, IRcountry_Slop) 
+```
+
+#### Tidying the estimates from the model
+
+```{r, fig.width=10, fig.height=8}
+IR_IS_EST <- IncomeRegion_IS |> mutate(coef=median(rvar))|> 
+  select(-rvar)|>
+  pivot_wider(values_from=coef, names_from=term)
+
+IRcountry_IS_Est <- IRcountry_IS |> mutate(coef=median(rvar))|> 
+  select(-rvar)|>
+  pivot_wider(values_from=coef, names_from=term)
+
+## Credible interval
+## Intercept Estimates
+#Hierarchy estimates
+IncomeRegion_Int_est <- IncomeRegion_Int |> 
+  mutate(Model = "Income-Region \nModel")|>
+  select(Country,Model,rvar)
+#Country estimates
+Income_Region_Int_Est <- IRcountry_Int |> 
+  mutate(Model = "Income-Region \nModel")|>
+  select(Country, Model,rvar)
+## Slope Estimates
+#Hierarchy estimates
+IncomeRegion_Slop_est <- IncomeRegion_Slop |> 
+  mutate(Model = "Income-Region \nModel")|>
+  select(Country, Model,rvar)
+#Country estimates
+Income_Region_Slop_Est <- IRcountry_Slop |> 
+  mutate(Model = "Income-Region \nModel")|>
+  select(Country, Model,rvar)
+```
+
+A plot showing the model estimates and credible intervals (80% and 95%), facet by country and connecting the dots for the estimates from the 4 models (An independent model fits, Country-specific model and Region, Income, Income-Region hierarchical models).
+
+```{r}
+## Hierarchical estimates
+##Intercepts
+Combined_Int_estimates <- rbind(Country_Int_est,Region_Int_est, Income_Int_est,
+                              IncomeRegion_Int_est) |>
+  arrange(Country)
+
+Combined_Slop_estimates <- rbind(Country_Slop_est,Region_Slop_est, Income_Slop_est,
+                              IncomeRegion_Slop_est)|>
+  arrange(Country)
+
+Combined_Int_estimates$Model <- factor(Combined_Int_estimates$Model, 
+                  levels = c("Country \nModel","Region \nModel", "Income \nModel", "Income-Region \nModel"))
+
+Combined_Slop_estimates$Model <- factor(Combined_Slop_estimates$Model, 
+                  levels = c("Country \nModel","Region \nModel", "Income \nModel", "Income-Region \nModel"))
+
+## Countries estimates
+Combined_Int_Estimates <- rbind(CountryInd_Int_Est,
+                            Country_Int_Est,Region_Int_Est,
+                            Income_Int_Est,Income_Region_Int_Est) |>
+  arrange(Country)
+
+Combined_Slop_Estimates <- rbind(CountryInd_Slop_Est,
+                            Country_Slop_Est,Region_Slop_Est,
+                            Income_Slop_Est,Income_Region_Slop_Est) |>
+  arrange(Country)
+
+Combined_Int_Estimates$Model <- factor(Combined_Int_Estimates$Model, 
+                 levels = c("Independent \nModel","Country \nModel",
+                             "Region \nModel", "Income \nModel",
+                             "Income-Region \nModel"))
+
+Combined_Slop_Estimates$Model <- factor(Combined_Slop_Estimates$Model, 
+                  levels = c("Independent \nModel","Country \nModel",
+                            "Region \nModel", "Income \nModel",
+                             "Income-Region \nModel"))
+```
+
+```{r}
+## Creating a grid for colors
+Names <- country_region |>
+  left_join(INCOME, join_by(Country == Country))
+
+Region_color <- c("Eastern Europe" = "lightsteelblue2",
+                  "Northern Europe"="lavenderblush2", 
+                  "Southern Europe"= "bisque2",
+                  "Western Europe"="#ACE1AF")
+
+Income_color <- c("High Income" = "black",
+                  "Middle Income" = "magenta3")
+
+Colors <- Names |>
+  select(Country, Region, Income) |>
+  mutate(color_region = Region_color[Region],
+         color_income = Income_color[Income]) |>
+  as.data.frame()
+
+
+color_flag <- c("Independent \nModel" ="darkolivegreen4" ,
+                "Country \nModel" ="purple2",
+                "Region \nModel" = "blue3",
+                "Income \nModel" = "brown4",
+                "Income-Region \nModel"= "darkgoldenrod3")
+
+```
+
+### The plots using the geo_facet to group the countries according to its position on the map.
+
+```{r}
+load(here::here("PISA_Data", "ISO Code.Rdata"))
+C_codes <- ISO_Group |> filter(Continent == "Europe") |>
+  select(name =Country, code = CNT)
+ C_codes$name <- as.character(C_codes$name)
+ C_codes <- C_codes |> arrange(name)
+
+
+row<-c(7,5,3,4,5,5,6,4,2,1,1,5,3,7,4,1,2,6,2,4,
+       2,4,6,7,4,6,3,1,3,6,4,2,5,3,5,6,1,5,3,2)
+
+col<-c(6,4,7,2,6,8,5,5,4,7,6,2,4,7,6,1,1,4,7,4,
+       6,3,7,4,8,6,3,4,5,1,7,8,7,6,5,2,5,3,8,2)
+
+geo_grid <- cbind(row,col,C_codes)
+
+
+## Comparing the model estimates
+if (!dir.exists(here::here("Saved_Plots/Comparison_Visuals")))
+  dir.create(here::here("Saved_Plots/Comparison_Visuals"))
+
+Int <- ggplot(data = Combined_Int_Estimates)+
+  geom_line(aes(x = Model, y = median(rvar), group = Country), linetype = "solid", color = "grey45")+
+  ggdist::stat_pointinterval(aes(x = Model, ydist =rvar,color = Model),
+                       point_size = 1.3, .width = c(.80,.95)) +
+  ggdist::stat_pointinterval(data = Combined_Int_estimates,
+             aes(x = Model, ydist = rvar, color = Model), .width = c(.80,.95),
+             point_size = 1.3,alpha = 0.28, position=position_nudge(x = 0.20), width = 0.1)+
+  scale_color_manual(values = color_flag)+
+  facet_geo(~Country, grid = geo_grid, scales= "free_y")+
+  labs(x = " ", y = "Intercept estimates")+
+  theme_bw()+
+  theme(
+    axis.text.x = element_blank(), axis.ticks.x=element_blank(),
+        strip.text.x = element_text(size = 9.5, face = "plain",
+                                    margin = margin(0.12,0,0.12,0, "cm")),
+        axis.text.y = element_text(size = 9.5,face = "bold"),
+      legend.position = "bottom")
+
+Slope <- ggplot(data = Combined_Slop_Estimates)+
+  geom_line(aes(x = Model, y = median(rvar), group = Country), linetype = "solid", color = "grey45")+
+  ggdist::stat_pointinterval(aes(x = Model, ydist =rvar,color = Model),
+                       point_size = 1.3, .width = c(.80,.95)) +
+    ggdist::stat_pointinterval(data = Combined_Slop_estimates,
+             aes(x = Model, ydist = rvar, color = Model), .width = c(.80,.95),
+             point_size = 1.3,alpha = 0.28, position=position_nudge(x = 0.20), width = 0.1)+
+  scale_color_manual(values = color_flag)+
+  facet_geo(~Country, grid = geo_grid, scales= "free_y")+
+  labs(x = " ", y = "Slope estimates")+
+  theme_bw()+
+  theme(axis.text.x = element_blank(), axis.ticks.x=element_blank(),
+        strip.text.x = element_text(size = 10.5, face = "plain", margin = margin(0.13,0,0.13,0, "cm")),
+        axis.text.y = element_text(size = 10,face = "bold"),
+      legend.position = "bottom")
+  
+#-------------------------------------------------------------------------------
+
+pdf("Saved_Plots/Comparison_Visuals/Interceptagain.pdf",
+    width = 14,
+    height = 10)
+g <- get_geofacet_grob(Int) # for geo_facet plots
+# g <- ggplotGrob(p) # for other ggplots
+
+stript <- which(grepl('strip-t', g$layout$name)) 
+
+for (i in stript){
+  j <- which(grepl('rect', g$grobs[[i]]$grobs[[1]]$childrenOrder))
+  k <- which(grepl('text', g$grobs[[i]]$grobs[[1]]$childrenOrder))
+  grobtext <- g$grobs[[i]]$grobs[[1]]$children[[k]]$children[[1]]$label
+  st <- match(grobtext,Colors$Country)
+  if (!is.na(st)){
+    g$grobs[[i]]$grobs[[1]]$children[[j]]$gp$fill <- Colors[st, "color_region"]
+    r <- which(grepl('text', g$grobs[[i]]$grobs[[1]]$children[[k]]$childrenOrder))
+    g$grobs[[i]]$grobs[[1]]$children[[k]]$children[[r]]$gp$col <- Colors[st, "color_income"]
+  } 
+}
+
+grid.draw(g)
+dev.off()
+
+###Slope
+pdf("Saved_Plots/Comparison_Visuals/Slopeagain.pdf",
+    width = 14,
+    height = 10)
+
+P <- get_geofacet_grob(Slope) # for geo_facet plots
+
+stript <- which(grepl('strip-t', P$layout$name)) 
+
+for (i in stript){
+  j <- which(grepl('rect', P$grobs[[i]]$grobs[[1]]$childrenOrder))
+  k <- which(grepl('text', P$grobs[[i]]$grobs[[1]]$childrenOrder))
+  grobtext <- P$grobs[[i]]$grobs[[1]]$children[[k]]$children[[1]]$label
+  st <- match(grobtext,Colors$Country)
+  if (!is.na(st)){
+    P$grobs[[i]]$grobs[[1]]$children[[j]]$gp$fill <- Colors[st, "color_region"]
+    r <- which(grepl('text', P$grobs[[i]]$grobs[[1]]$children[[k]]$childrenOrder))
+    P$grobs[[i]]$grobs[[1]]$children[[k]]$children[[r]]$gp$col <- Colors[st, "color_income"]
+  } 
+}
+
+grid.draw(P)
+dev.off()
+```
+
+#### Comparing country estimates
+
+```{r}
+int <- ggplot(data = Combined_Int_Estimates)+
+  geom_line(aes(x = Model, y = median(rvar), group = Country), linetype = "solid", color = "grey45")+
+  ggdist::stat_pointinterval(aes(x = Model, ydist =rvar,color = Model),
+                       point_size = 1.3, .width = c(.80,.95)) +
+  ggdist::stat_pointinterval(data = Combined_Int_estimates,
+             aes(x = Model, ydist = rvar, color = Model), .width = c(.80,.95),
+             point_size = 1.3,alpha = 0.35, position=position_nudge(x = 0.15), width = 0.1)+
+  scale_color_manual(values = color_flag)+
+  facet_geo(~Country, grid = geo_grid)+
+  labs(x = " ", y = "Intercept estimates")+
+  theme_bw()+
+  theme(
+    axis.text.x = element_blank(), axis.ticks.x=element_blank(),
+        strip.text.x = element_text(size = 9.5, face = "plain",
+                                    margin = margin(0.12,0,0.12,0, "cm")),
+        axis.text.y = element_text(size = 9.5,face = "bold"),
+      legend.position = "bottom")
+
+slop <- ggplot(data = Combined_Slop_Estimates)+
+  geom_line(aes(x = Model, y = median(rvar), group = Country), linetype = "solid", color = "grey45")+
+  ggdist::stat_pointinterval(aes(x = Model, ydist =rvar,color = Model),
+                       point_size = 1.3, .width = c(.80,.95)) +
+    ggdist::stat_pointinterval(data = Combined_Slop_estimates,
+             aes(x = Model, ydist = rvar, color = Model), .width = c(.80,.95),
+             point_size = 1.3,alpha = 0.35, position=position_nudge(x = 0.15), width = 0.1)+
+  scale_color_manual(values = color_flag)+
+  facet_geo(~Country, grid = geo_grid, scales= "free_y")+
+  labs(x = " ", y = "Slope estimates")+
+  theme_bw()+
+  theme(axis.text.x = element_blank(), axis.ticks.x=element_blank(),
+        strip.text.x = element_text(size = 10.5, face = "plain", margin = margin(0.13,0,0.13,0, "cm")),
+        axis.text.y = element_text(size = 10,face = "bold"),
+      legend.position = "bottom")
+  
+#-------------------------------------------------------------------------------
+
+pdf("Saved_Plots/Comparison_Visuals/Comparing-countries-Intercept.pdf",
+    width = 14,
+    height = 10)
+g <- get_geofacet_grob(int) # for geo_facet plots
+# g <- ggplotGrob(p) # for other ggplots
+
+stript <- which(grepl('strip-t', g$layout$name)) 
+
+for (i in stript){
+  j <- which(grepl('rect', g$grobs[[i]]$grobs[[1]]$childrenOrder))
+  k <- which(grepl('text', g$grobs[[i]]$grobs[[1]]$childrenOrder))
+  grobtext <- g$grobs[[i]]$grobs[[1]]$children[[k]]$children[[1]]$label
+  st <- match(grobtext,Colors$Country)
+  if (!is.na(st)){
+    g$grobs[[i]]$grobs[[1]]$children[[j]]$gp$fill <- Colors[st, "color_region"]
+    r <- which(grepl('text', g$grobs[[i]]$grobs[[1]]$children[[k]]$childrenOrder))
+    g$grobs[[i]]$grobs[[1]]$children[[k]]$children[[r]]$gp$col <- Colors[st, "color_income"]
+  } 
+}
+
+grid.draw(g)
+dev.off()
+
+###Slope
+pdf("Saved_Plots/Comparison_Visuals/Comparing-countries-Slope.pdf",
+    width = 14,
+    height = 10)
+
+P <- get_geofacet_grob(slop) # for geo_facet plots
+
+stript <- which(grepl('strip-t', P$layout$name)) 
+
+for (i in stript){
+  j <- which(grepl('rect', P$grobs[[i]]$grobs[[1]]$childrenOrder))
+  k <- which(grepl('text', P$grobs[[i]]$grobs[[1]]$childrenOrder))
+  grobtext <- P$grobs[[i]]$grobs[[1]]$children[[k]]$children[[1]]$label
+  st <- match(grobtext,Colors$Country)
+  if (!is.na(st)){
+    P$grobs[[i]]$grobs[[1]]$children[[j]]$gp$fill <- Colors[st, "color_region"]
+    r <- which(grepl('text', P$grobs[[i]]$grobs[[1]]$children[[k]]$childrenOrder))
+    P$grobs[[i]]$grobs[[1]]$children[[k]]$children[[r]]$gp$col <- Colors[st, "color_income"]
+  } 
+}
+
+grid.draw(P)
+dev.off()
+```
+
+
+### Selecting few countries to investigate.
+
+Countries with one data point, and countries where the hierarchical structure downweight its estimate are worthy of careful observation.
+
+Countries like; Albania, Belarus, Ukraine, Moldova, Macedonia,
+Finland, Luxembourg, Liechtenstein, Czechia, Switzerland.
+
+We want to investigate 10 countries. The first thing to do is to filter out the regression line on the data across the different fitted model for these countries.
+
+```{r}
+QCountries <- c("Albania", "Belarus", "Ukraine", "Moldova", "Macedonia",
+                "Bosnia and Herzegovina","Finland", "Luxembourg", 
+                "Liechtenstein", "Czechia", "Sweden", "Germany")
+
+#Filtering the colors for the selected countries
+QColors <- Colors |>
+  filter(Country %in% QCountries)
+
+pdf("Saved_Plots/Comparison_Visuals/few-country_fit.pdf",
+    width = 12,
+    height = 9)
+
+ggplot(data = filter(PISA_Europe_Data, Country %in% QCountries), 
+       aes(x=year_orig, y=math))+ 
+  geom_point()+
+  ggh4x::facet_wrap2(~Country, nrow = 4)+
+  geom_abline(data=filter(CountryInd_IS_Est, Country %in% QCountries), aes(slope=year_orig, intercept= Intercept), color="lightseagreen")+
+  geom_abline(data=filter(Country_IS_Est, Country %in% QCountries), 
+              aes(slope=year_orig, intercept= Intercept), color="magenta3")+
+  geom_abline(data=filter(Rcountry_IS_Est, Country %in% QCountries),
+              aes(slope=year_orig, intercept= Intercept), color="blue3")+
+geom_abline(data=filter(Icountry_IS_Est, Country %in% QCountries),
+            aes(slope=year_orig, intercept= Intercept), color="yellow4")+
+ geom_abline(data=filter(IRcountry_IS_Est, Country %in% QCountries),
+             aes(slope=year_orig, intercept= Intercept), color="indianred")+
+ scale_x_continuous(breaks = seq(-15,0,3),labels = function(x) x+2018) +
+  xlab("year")+ ggtitle("Independent Model = lightseagreen \n Country-specific model = Magenta \n Region hierarchical model = blue \n Income hierarchical model = yellow \n Income-Region hierarchical model = Indianred")+
+  theme_bw()+
+  theme(panel.spacing=unit(1,"lines"),
+        legend.position = "bottom",
+        plot.subtitle = element_text(family = "Consolas"),
+        axis.text.x = element_text(angle = 45, hjust = 0.5, vjust = 0.5))
+
+dev.off()
+
+```
+
+```{r}
+## Intercept
+
+A1 <- ggplot(data=filter(Combined_Int_Estimates, Country %in% QCountries))+
+geom_line(aes(x = Model, y = median(rvar), group = Country), linetype = "solid", color = "grey45")+
+  ggdist::stat_pointinterval(aes(x = Model, ydist =rvar,color = Model),
+                       point_size = 1.3, .width = c(.80,.95)) +
+  ggdist::stat_pointinterval(data = filter(Combined_Int_estimates, Country %in% QCountries),
+             aes(x = Model, ydist = rvar, color = Model), .width = c(.80,.95),
+             point_size = 1.3,alpha = 0.35, position=position_nudge(x = 0.15), width = 0.1)+
+  scale_color_manual(values = color_flag)+
+ ggh4x::facet_wrap2(~Country, scales= "free_y", nrow = 4)+
+  labs(x = " ", y = "Intercept estimates")+
+  theme_bw()+
+  theme(axis.text.x = element_blank(), 
+        axis.ticks.x=element_blank(),
+        strip.text.x = element_text(size = 10.5, face = "plain", margin = margin(0.13,0,0.13,0, "cm")),
+      legend.position = "bottom")
+
+#Comparing the country estimates 
+a1 <- ggplot(data=filter(Combined_Int_Estimates, Country %in% QCountries))+
+geom_line(aes(x = Model, y = median(rvar), group = Country), linetype = "solid", color = "grey45")+
+  ggdist::stat_pointinterval(aes(x = Model, ydist =rvar,color = Model),
+                       point_size = 1.3, .width = c(.80,.95)) +
+  ggdist::stat_pointinterval(data = filter(Combined_Int_estimates, Country %in% QCountries),
+             aes(x = Model, ydist = rvar, color = Model), .width = c(.80,.95),
+             point_size = 1.3,alpha = 0.35, position=position_nudge(x = 0.15), width = 0.1)+
+  scale_color_manual(values = color_flag)+
+ ggh4x::facet_wrap2(~Country, nrow = 4)+
+  labs(x = " ", y = "Intercept estimates")+
+  theme_bw()+
+  theme(axis.text.x = element_blank(), 
+        axis.ticks.x=element_blank(),
+        strip.text.x = element_text(size = 10.5, face = "plain", margin = margin(0.13,0,0.13,0, "cm")),
+      legend.position = "bottom")
+
+
+pdf("Saved_Plots/Comparison_Visuals/FewerC_Intercept.pdf",
+    width = 12,
+    height = 9)
+
+G <- ggplotGrob(A1)
+# g$layout$name
+Strip <- which(grepl('strip', G$layout$name)) 
+
+
+for (i in Strip){
+  j <- which(grepl('rect', G$grobs[[i]]$grobs[[1]]$childrenOrder))
+  k <- which(grepl('text', G$grobs[[i]]$grobs[[1]]$childrenOrder))
+  grobtext <- G$grobs[[i]]$grobs[[1]]$children[[k]]$children[[1]]$label
+  st <- match(grobtext, QColors$Country)
+  if (!is.na(st)){
+    G$grobs[[i]]$grobs[[1]]$children[[j]]$gp$fill <- QColors[st, "color_region"]
+    r <- which(grepl('text', G$grobs[[i]]$grobs[[1]]$children[[k]]$childrenOrder))
+    G$grobs[[i]]$grobs[[1]]$children[[k]]$children[[r]]$gp$col <- QColors[st, "color_income"]
+  }
+}
+grid.draw(G)
+dev.off()
+
+pdf("Saved_Plots/Comparison_Visuals/FewerC_Comparing-country-Intercept.pdf",
+    width = 12,
+    height = 9)
+
+g <- ggplotGrob(a1)
+# g$layout$name
+Strip <- which(grepl('strip', g$layout$name)) 
+
+
+for (i in Strip){
+  j <- which(grepl('rect', g$grobs[[i]]$grobs[[1]]$childrenOrder))
+  k <- which(grepl('text', g$grobs[[i]]$grobs[[1]]$childrenOrder))
+  grobtext <- g$grobs[[i]]$grobs[[1]]$children[[k]]$children[[1]]$label
+  st <- match(grobtext, QColors$Country)
+  if (!is.na(st)){
+    g$grobs[[i]]$grobs[[1]]$children[[j]]$gp$fill <- QColors[st, "color_region"]
+    r <- which(grepl('text', g$grobs[[i]]$grobs[[1]]$children[[k]]$childrenOrder))
+    g$grobs[[i]]$grobs[[1]]$children[[k]]$children[[r]]$gp$col <- QColors[st, "color_income"]
+  }
+}
+grid.draw(g)
+dev.off()
+```
+
+```{r}
+## Slope
+
+A2 <- ggplot(data=filter(Combined_Slop_Estimates, Country %in% QCountries))+
+geom_line(aes(x = Model, y = median(rvar), group = Country), linetype = "solid", color = "grey45")+
+  ggdist::stat_pointinterval(aes(x = Model, ydist =rvar,color = Model),
+                       point_size = 1.3, .width = c(.80,.95)) +
+  ggdist::stat_pointinterval(data = filter(Combined_Slop_estimates, Country %in% QCountries),
+             aes(x = Model, ydist = rvar, color = Model), .width = c(.80,.95),
+             point_size = 1.3,alpha = 0.35, position=position_nudge(x = 0.15), width = 0.1)+
+  scale_color_manual(values = color_flag)+
+ ggh4x::facet_wrap2(~Country, scales= "free_y", nrow = 4)+
+  labs(x = " ", y = "Slope estimates")+
+  theme_bw()+
+  theme(axis.text.x = element_blank(), 
+        axis.ticks.x=element_blank(),
+        strip.text.x = element_text(size = 10.5, face = "plain", margin = margin(0.13,0,0.13,0, "cm")),
+      legend.position = "bottom")
+
+#Comparing the country estimates 
+a2 <- ggplot(data=filter(Combined_Slop_Estimates, Country %in% QCountries))+
+geom_line(aes(x = Model, y = median(rvar), group = Country), linetype = "solid", color = "grey45")+
+  ggdist::stat_pointinterval(aes(x = Model, ydist =rvar,color = Model),
+                       point_size = 1.3, .width = c(.80,.95)) +
+  ggdist::stat_pointinterval(data = filter(Combined_Slop_estimates, Country %in% QCountries),
+             aes(x = Model, ydist = rvar, color = Model), .width = c(.80,.95),
+             point_size = 1.3, alpha = 0.35, position=position_nudge(x = 0.15), width = 0.1)+
+  scale_color_manual(values = color_flag)+
+ ggh4x::facet_wrap2(~Country, nrow = 4)+
+  labs(x = " ", y = "Slope estimates")+
+  theme_bw()+
+  theme(axis.text.x = element_blank(), 
+        axis.ticks.x=element_blank(),
+        strip.text.x = element_text(size = 10.5, face = "plain", margin = margin(0.13,0,0.13,0, "cm")),
+      legend.position = "bottom")
+
+pdf("Saved_Plots/Comparison_Visuals/FewerC_Slope.pdf",
+    width = 12,
+    height = 9)
+
+G2 <- ggplotGrob(A2)
+# g$layout$name
+Strip2 <- which(grepl('strip', G2$layout$name)) 
+
+for (i in Strip2){
+  j <- which(grepl('rect', G2$grobs[[i]]$grobs[[1]]$childrenOrder))
+  k <- which(grepl('text', G2$grobs[[i]]$grobs[[1]]$childrenOrder))
+  grobtext <- G2$grobs[[i]]$grobs[[1]]$children[[k]]$children[[1]]$label
+  st <- match(grobtext, QColors$Country)
+  if (!is.na(st)){
+    G2$grobs[[i]]$grobs[[1]]$children[[j]]$gp$fill <- QColors[st, "color_region"]
+    r <- which(grepl('text', G2$grobs[[i]]$grobs[[1]]$children[[k]]$childrenOrder))
+    G2$grobs[[i]]$grobs[[1]]$children[[k]]$children[[r]]$gp$col <- QColors[st, "color_income"]
+  }
+}
+grid.draw(G2)
+dev.off()
+
+pdf("Saved_Plots/Comparison_Visuals/FewerC_Comparing-country-Slope.pdf",
+    width = 12,
+    height = 9)
+
+g <- ggplotGrob(a2)
+# g$layout$name
+Strip <- which(grepl('strip', g$layout$name)) 
+
+
+for (i in Strip){
+  j <- which(grepl('rect', g$grobs[[i]]$grobs[[1]]$childrenOrder))
+  k <- which(grepl('text', g$grobs[[i]]$grobs[[1]]$childrenOrder))
+  grobtext <- g$grobs[[i]]$grobs[[1]]$children[[k]]$children[[1]]$label
+  st <- match(grobtext, QColors$Country)
+  if (!is.na(st)){
+    g$grobs[[i]]$grobs[[1]]$children[[j]]$gp$fill <- QColors[st, "color_region"]
+    r <- which(grepl('text', g$grobs[[i]]$grobs[[1]]$children[[k]]$childrenOrder))
+    g$grobs[[i]]$grobs[[1]]$children[[k]]$children[[r]]$gp$col <- QColors[st, "color_income"]
+  }
+}
+grid.draw(g)
+dev.off()
+```
+
