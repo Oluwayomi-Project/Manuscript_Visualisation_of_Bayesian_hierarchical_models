@@ -1,0 +1,530 @@
+---
+title: "JAGS Model estimates"
+author: "Oluwayomi Akinfenwa"
+date: "08/03/2024"
+output:
+  html_document:
+    toc: yes
+    toc_depth: '4'
+    df_print: paged
+  bookdown::html_document2:
+    toc: no
+    toc_float: yes
+    toc_depth: 4
+    number_sections: yes
+  pdf_document:
+    toc: yes
+    toc_depth: '4'
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+options(knitr.duplicate.label = 'allow')
+```
+
+### Loading necessary packages
+
+```{r, libraries, include = FALSE}
+library(tidybayes)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(rjags)
+library(R2jags)
+library(bayesplot)
+library(patchwork)
+library(ggragged)
+library(geofacet)
+```
+
+Loading the PISA data for the European countries Europe_Pisamaths.Rdata.
+```{r loading the data}
+load(here::here("PISA_Data", "Europe_Pisamaths.Rdata"))
+
+#Filtering the data for 2022 since we have decided to make predictions with the models for year 2022.
+PISA_Europe_Data <- Pisa_Europe_Data |>
+  filter(year != "2022")
+```
+
+**We have 202 observations for this analysis**
+
+### Creating the index for the variables in the data set.
+
+```{r}
+#Creating the indexes for the hierarchical variables.
+country_names <- levels(factor(PISA_Europe_Data$Country))
+region_names <- levels(factor(PISA_Europe_Data$Region))
+income_names <- levels(factor(PISA_Europe_Data$Income))
+incomeregion_names <- levels(factor(PISA_Europe_Data$Income_Region))
+
+## Obtaining the region indexes
+
+country_region <- PISA_Europe_Data |> group_by(Country) |>
+  summarise(Region=first(Region)) |>
+  mutate(Country_num = as.numeric(as.factor(Country))) |>
+  mutate(region_num = as.numeric(as.factor(Region)))
+
+REGION <- country_region |> select(Country, Region)
+
+## Obtaining the income indexes
+
+country_income <- PISA_Europe_Data |> group_by(Country) |>
+  summarise(Income=first(Income)) |>
+  mutate(Country_num = as.numeric(as.factor(Country))) |>
+  mutate(income_num = as.numeric(as.factor(Income)))
+         
+INCOME <- country_income |> select(Country, Income)
+
+## Obtaining the income_region indexes
+
+country_incomeregion <- PISA_Europe_Data |> group_by(Country) |>
+  summarise(Income_Region=first(Income_Region)) |>
+  mutate(Country_num = as.numeric(as.factor(Country))) |>
+  mutate(incomeregion_num = as.numeric(as.factor(Income_Region)))
+         
+INCOME_REGION <- REGION |>
+  left_join(INCOME, join_by(Country))
+
+Country_region <- country_region |> left_join(INCOME, join_by(Country))
+Country_income <- country_income |> left_join(REGION, join_by(Country))
+Country_incomeregion <- country_incomeregion |> left_join(INCOME_REGION, join_by(Country))
+
+# Specifying the base_year as 2018.
+base_year <- 2018
+
+## Creating the pred_grid.
+pred_grid <- PISA_Europe_Data |>
+  modelr::data_grid(Country,year) |>
+  mutate(year_orig = year - base_year) |>
+  mutate(Country_num = as.numeric(as.factor(Country)),
+  Region = country_region$Region[Country_num],
+  Income = country_income$Income[Country_num],
+  Income_Region = country_incomeregion$Income_Region[Country_num]) |>
+  mutate(region_num = as.numeric(as.factor(Region)),
+         income_num = as.numeric(as.factor(Income)),
+         incomeregion_num = as.numeric(as.factor(Income_Region)))
+```
+
+## Loading the hierarchical models from the saved R.Data file
+
+```{r}
+#Independent-Country specific model
+load(here::here("Manuscript_Models", "CountryInd_JAGSModel.Rdata"))
+
+#Country specific model
+load(here::here("Manuscript_Models", "Country_JAGSModel.Rdata"))
+
+#Region hierarchical model
+load(here::here("Manuscript_Models", "Region_JAGSModel.Rdata"))
+
+#Income hierarchical model
+load(here::here("Manuscript_Models", "Income_JAGSModel.Rdata"))
+
+#Income-Region hierarchical model
+load(here::here("Manuscript_Models", "IncomeRegion_JAGSModel.Rdata"))
+```
+
+### Results
+
+#### Estimates from the independent-country-specific model
+
+```{r}
+#For the Independent linear model, we are interested in fitting a linear model omitting the countries with one data point.
+#note that the country names will be different because of the SCountry we excluded in the model.
+SCountry <- c("Belarus", "Bosnia& Herzegovina", "Ukraine")
+
+SPISA_Europe_Data <- PISA_Europe_Data |>
+  filter(!Country %in% SCountry)
+Scountry_names <- levels(factor(SPISA_Europe_Data$Country))
+CountryInd_ModelSample <- CountryInd_JAGSModel$BUGSoutput$sims.matrix
+
+JAGS_CountryInd_I <- spread_rvars(CountryInd_ModelSample , alpha.j[Country_index]) |>
+  mutate(Country = Scountry_names[Country_index]) |>
+  right_join(Country_region, join_by(Country== Country))|>
+  mutate(term="Intercept") |>
+  select(Country,Region,Income, term,rvar=alpha.j)
+
+JAGS_CountryInd_S <- spread_rvars(CountryInd_ModelSample, beta.j[Country_index]) |>
+  mutate(Country = Scountry_names[Country_index]) |>
+  right_join(Country_region, join_by(Country== Country))|>
+  mutate(term="year_orig") |>
+  select(Country,Region,Income, term,rvar=beta.j)
+
+## Tidying the estimates
+JAGS_CountryInd_IS <- rbind(JAGS_CountryInd_I, JAGS_CountryInd_S)
+
+JAGS_CountryInd_ISEst <- JAGS_CountryInd_IS |> mutate(coef=median(rvar))|> 
+  select(-rvar)|>
+  pivot_wider(values_from=coef, names_from=term)
+
+
+## Credible interval
+## Intercept Estimates
+JAGS_CountryInd_Int_Est <- JAGS_CountryInd_I |>
+  mutate(Model = "Independent \nModel")|>
+  select(Country, Model, rvar)
+
+# Slope Estimates
+JAGS_CountryInd_Slop_Est <- JAGS_CountryInd_S |>
+  mutate(Model = "Independent \nModel")|>
+  select(Country, Model, rvar)
+```
+
+#### Estimates from the country-specific model
+
+```{r}
+Country_ModelSample <- Country_JAGSModel$BUGSoutput$sims.matrix
+
+JAGS_CountryI <- spread_rvars(Country_ModelSample , alpha.j[Country_index]) |>
+  mutate(Country = country_names[Country_index], term="Intercept") |>
+  left_join(Country_region, join_by(Country== Country))|>
+  select(Country,Region,Income, term,rvar=alpha.j)
+
+
+JAGS_CountryS <- spread_rvars(Country_ModelSample , beta.j[Country_index]) |>
+  mutate(Country = country_names[Country_index], term="year_orig") |>
+  left_join(Country_region, join_by(Country== Country))|>
+  select(Country,Region,Income, term,rvar=beta.j)
+
+JAGS_CountryIS <- rbind(JAGS_CountryI, JAGS_CountryS)
+
+
+JAGS_Country_IS_Est <- JAGS_CountryIS |> mutate(coef=median(rvar))|> 
+  select(-rvar, Country)|>
+  pivot_wider(values_from=coef, names_from=term)
+
+## Credible interval
+## Intercept Estimates
+JAGS_Country_Int_Est <- JAGS_CountryI |> 
+  mutate(Model = "Country \nModel")|>
+  select(c(Country, Model,rvar))
+
+## Slope Estimates
+JAGS_Country_Slop_Est <- JAGS_CountryS |> 
+  mutate(Model = "Country \nModel")|>
+  select(c(Country, Model,rvar))
+
+#The hierarchical estimate for the country-specific model is the b_intercept (global estimate)
+country_mu_alpha <- spread_rvars(Country_ModelSample , mu_alpha)|> 
+  rename(rvar = mu_alpha)
+
+JAGS_Country_Int_est <- country_mu_alpha[rep (seq_len(nrow(country_mu_alpha)),
+                              each = 40), ]  |>
+  mutate(Country_index = 1:40) |>
+  mutate(Country = country_names[Country_index], 
+         Model = "Country \nModel") |>
+  left_join(Country_region, join_by(Country== Country))|>
+  select(Country, Model, rvar)
+  
+## Pulling the mu_beta from the country-specific model
+country_mu_beta <- spread_rvars(Country_ModelSample , mu_beta)|> 
+  rename(rvar = mu_beta)
+
+JAGS_Country_Slop_est <- country_mu_beta[rep (seq_len(nrow(country_mu_beta)),
+                              each = 40), ]  |>
+  mutate(Country_index = 1:40) |>
+  mutate(Country = country_names[Country_index], 
+         Model = "Country \nModel") |>
+  left_join(Country_region, join_by(Country== Country))|>
+  select(Country, Model, rvar)
+```
+
+### Estimates from the region hierarchical model
+
+```{r}
+Region_ModelSamples <- Region_JAGSModel$BUGSoutput$sims.matrix
+# get_variables(Region_ModelSamples)
+
+## Hierarchical estimates
+JAGS_Region_Int <- spread_rvars(Region_ModelSamples , mu_alpha.r[region_num]) |>
+  mutate(Region = region_names[region_num], term = "Intercept") |>
+  right_join(Country_region, by = join_by(Region==Region))|>
+  rename(rvar =mu_alpha.r) |>
+  select(Country,Region, Income, term, rvar)
+
+JAGS_Region_Slop <- spread_rvars(Region_ModelSamples , mu_beta.r[region_num]) |>
+  mutate(Region = region_names[region_num], term = "year_orig") |>
+  right_join(Country_region, by = join_by(Region==Region))|>
+  rename(rvar =mu_beta.r) |>
+  select(Country,Region, Income, term, rvar)
+
+JAGS_Region_IS <- rbind(JAGS_Region_Int, JAGS_Region_Slop)
+
+## The region country estimates
+JAGS_Rcountry_Int <- spread_rvars(Region_ModelSamples , alpha.j[country_num]) |>
+  mutate(Country = country_names[country_num], term = "Intercept") |>
+  right_join(Country_region, by = join_by(Country==Country))|>
+  rename(rvar =alpha.j,Country = Country) |>
+  select(Country, Region,Income, term,rvar)
+
+
+JAGS_Rcountry_Slop <- spread_rvars(Region_ModelSamples , beta.j[country_num]) |>
+  mutate(Country = country_names[country_num], term = "year_orig") |>
+  right_join(Country_region, by = join_by(Country==Country))|>
+  rename(rvar =beta.j,Country = Country) |>
+  select(Country, Region,Income, term,rvar)
+
+JAGS_Rcountry_IS <- rbind(JAGS_Rcountry_Int, JAGS_Rcountry_Slop) 
+```
+
+### Tidying the estimates from the Region hierarchical model
+
+```{r, fig.width=10, fig.height=8}
+#median estimates
+JAGS_Region_IS_Est <- JAGS_Region_IS |> mutate(coef=median(rvar))|> 
+  pivot_wider(values_from=coef, names_from=term)
+
+JAGS_Rcountry_IS_Est <- JAGS_Rcountry_IS |> mutate(coef=median(rvar))|> 
+  select(-rvar)|>
+  pivot_wider(values_from=coef, names_from=term)
+
+## Credible interval
+## Intercept Estimates
+#Hierarchy estimates
+JAGS_Region_Int_est <- JAGS_Region_Int |>
+  mutate(Model = "Region \nModel")|>
+  select(Country, Model, rvar)
+
+#Country estimates
+JAGS_Region_Int_Est <- JAGS_Rcountry_Int |>
+  mutate(Model = "Region \nModel")|>
+  select(Country, Model, rvar)
+
+## Slope Estimates
+#Hierarchy estimates
+JAGS_Region_Slop_est <- JAGS_Region_Slop |> 
+  mutate(Model = "Region \nModel")|>
+  select(Country, Model, rvar)
+
+#Country estimates
+JAGS_Region_Slop_Est <- JAGS_Rcountry_Slop |> 
+  mutate(Model = "Region \nModel")|>
+  select(Country,Model, rvar)
+```
+
+### Estimates from the income hierarchical model
+
+```{r}
+Income_ModelSamples <- Income_JAGSModel$BUGSoutput$sims.matrix
+# get_variables(Income_ModelSamples)
+JAGS_Income_Int <- spread_rvars(Income_ModelSamples , mu_alpha.I[income_num]) |>
+  mutate(Income = income_names[income_num], term = "Intercept") |>
+  right_join(Country_income, by = join_by(Income==Income))|>
+  rename(rvar =mu_alpha.I) |>
+  select(Country,Region, Income, term,rvar)
+
+JAGS_Income_Slop <- spread_rvars(Income_ModelSamples , mu_beta.I[income_num]) |>
+  mutate(Income = income_names[income_num], term = "year_orig") |>
+  right_join(Country_income, by = join_by(Income==Income))|>
+  rename(rvar =mu_beta.I) |>
+  select(Country,Region, Income, term,rvar)
+
+JAGS_Income_IS <- rbind(JAGS_Income_Int, JAGS_Income_Slop)
+
+## The income country estimates
+JAGS_Icountry_Int <- spread_rvars(Income_ModelSamples , alpha.j[country_num]) |>
+  mutate(Country = country_names[country_num], term = "Intercept") |>
+  right_join(Country_income, by = join_by(Country==Country))|>
+  rename(rvar =alpha.j, Country=Country) |>
+  select(Country,Region, Income,Region, term,rvar)
+
+JAGS_Icountry_Slop <- spread_rvars(Income_ModelSamples , beta.j[country_num]) |>
+  mutate(Country = country_names[country_num], term = "year_orig") |>
+  right_join(Country_income, by = join_by(Country==Country))|>
+  rename(rvar =beta.j,Country=Country) |>
+  select(Country,Region, Income,Region, term,rvar)
+
+JAGS_Icountry_IS <- rbind(JAGS_Icountry_Int, JAGS_Icountry_Slop) 
+```
+
+#### Tidying the estimates from the model
+
+```{r}
+JAGS_Income_IS_EST <- JAGS_Income_IS |> mutate(coef=median(rvar))|> 
+  select(-rvar)|>
+  pivot_wider(values_from=coef, names_from=term)
+
+JAGS_Icountry_IS_Est <- JAGS_Icountry_IS |> mutate(coef=median(rvar))|> 
+  select(-rvar)|>
+  pivot_wider(values_from=coef, names_from=term)
+
+## Credible interval
+## Intercept Estimates
+#Hierarchy estimates
+JAGS_Income_Int_est <- JAGS_Income_Int |> 
+  mutate(Model = "Income \nModel")|>
+  select(Country, Model, rvar)
+#Country estimates
+JAGS_Income_Int_Est <- JAGS_Icountry_Int |>
+  mutate(Model = "Income \nModel")|>
+  select(Country, Model, rvar)
+
+## Slope Estimates
+#Hierarchy estimates
+JAGS_Income_Slop_est <- JAGS_Income_Slop |>
+  mutate(Model = "Income \nModel")|>
+  select(Country, Model, rvar)
+#Country estimates
+JAGS_Income_Slop_Est <- JAGS_Icountry_Slop |>
+  mutate(Model = "Income \n Model")|>
+  select(Country, Model, rvar)
+```
+
+### Estimates from the incomeregion hierarchical model
+
+```{r}
+IR_ModelSamples <- IR_JAGSModel$BUGSoutput$sims.matrix
+# get_variables(IR_ModelSamples)
+JAGS_IncomeRegion_Int <- spread_rvars(IR_ModelSamples , mu_alpha.IR[income_num]) |>
+  mutate(Income_Region = incomeregion_names[income_num], term = "Intercept") |>
+  right_join(Country_incomeregion, by = join_by(Income_Region ==Income_Region ))|>
+  rename(rvar =mu_alpha.IR) |>
+  select(Country,Region,Income,Income_Region,term,rvar)
+
+JAGS_IncomeRegion_Slop <- spread_rvars(IR_ModelSamples , mu_beta.IR[income_num]) |>
+  mutate(Income_Region  = incomeregion_names[income_num], term = "year_orig") |>
+  right_join(Country_incomeregion, by = join_by(Income_Region ==Income_Region ))|>
+  rename(rvar =mu_beta.IR) |>
+  select(Country,Region,Income,Income_Region,term,rvar)
+
+JAGS_IncomeRegion_IS <- rbind(JAGS_IncomeRegion_Int, JAGS_IncomeRegion_Slop)
+
+## The income country estimates
+JAGS_IRcountry_Int <- spread_rvars(IR_ModelSamples , alpha.j[country_num]) |>
+  mutate(Country = country_names[country_num], term = "Intercept") |>
+  right_join(Country_incomeregion, by = join_by(Country==Country))|>
+  rename(rvar =alpha.j, Country=Country) |>
+  select(Country,Region, Income, Income_Region, term,rvar)
+
+
+JAGS_IRcountry_Slop <- spread_rvars(IR_ModelSamples , beta.j[country_num]) |>
+  mutate(Country = country_names[country_num], term = "year_orig") |>
+  right_join(Country_incomeregion, by = join_by(Country==Country))|>
+  rename(rvar =beta.j,Country=Country) |>
+  select(Country,Region,Income, Income_Region, term,rvar)
+
+JAGS_IRcountry_IS <- rbind(JAGS_IRcountry_Int, JAGS_IRcountry_Slop) 
+```
+
+#### The median and credible interval estimates for the IncomeRegion model
+
+```{r}
+## Median
+JAGS_IR_IS_EST <- JAGS_IncomeRegion_IS |> mutate(coef=median(rvar))|> 
+  select(-rvar)|>
+  pivot_wider(values_from=coef, names_from=term)
+
+JAGS_IRcountry_IS_Est <- JAGS_IRcountry_IS |> mutate(coef=median(rvar))|> 
+  select(-rvar)|>
+  pivot_wider(values_from=coef, names_from=term)
+
+## Credible interval
+## Intercept Estimates
+#Hierarchy estimates
+JAGS_IncomeRegion_Int_est <- JAGS_IncomeRegion_Int |> 
+  mutate(Model = "Income-Region \nModel")|>
+  select(Country, Model,rvar)
+#Country estimates
+JAGS_Income_Region_Int_Est <- JAGS_IRcountry_Int |> 
+  mutate(Model = "Income-Region \nModel")|>
+  select(Country, Model,rvar)
+## Slope Estimates
+#Hierarchy estimates
+JAGS_IncomeRegion_slop_est <- JAGS_IncomeRegion_Slop |> 
+  mutate(Model = "Income-Region \nModel")|>
+  select(Country, Model,rvar)
+#Country estimates
+JAGS_Income_Region_Slop_Est <- JAGS_IRcountry_Slop |>
+  mutate(Model = "Income-Region \nModel")|>
+  select(Country, Model,rvar)
+```
+
+### Plotting the model fit on the data
+
+```{r}
+if (!dir.exists(here::here("Saved_Plots/Regression_fits")))
+ dir.create(here::here("Saved_Plots/Regression_fits"))
+```
+
+#### Independent country model fit on the data
+
+```{r}
+
+pdf("Saved_Plots/Regression_fits/JAGS_independent_fit.pdf",
+    width = 12,
+    height = 9)
+ggplot(PISA_Europe_Data, aes(x=year_orig, y=math))+ 
+  geom_point()+
+  facet_wrap(~Country, nrow = 5)+
+  geom_abline(data= JAGS_CountryInd_ISEst, aes(slope=year_orig, intercept= Intercept), color="green4")+
+  scale_x_continuous(breaks = seq(-15,0,3),labels = function(x) x+2018)+
+  xlab("year")+ ggtitle("Independent country model fit of average maths scores over time")+
+  theme_bw()+
+  theme(panel.spacing=unit(1,"lines"),
+        legend.position = "bottom",
+        plot.subtitle = element_text(family = "Consolas"),
+        axis.text.x = element_text(angle = 45, hjust = 0.5, vjust = 0.5))
+dev.off()
+```
+
+#### Country model fit on the data
+
+```{r}
+pdf("Saved_Plots/Regression_fits/JAGS_country-specific_fit.pdf",
+    width = 12,
+    height = 9)
+ggplot(PISA_Europe_Data, aes(x=year_orig, y=math))+ 
+  geom_point()+
+  facet_wrap(~Country, nrow = 5)+
+  geom_abline(data=JAGS_Country_IS_Est, aes(slope=year_orig, intercept= Intercept), color="magenta4")+
+  scale_x_continuous(breaks = seq(-15,0,3),labels = function(x) x+2018)+
+  xlab("year")+ ggtitle("Country-specific model fit of average maths scores over time")+
+  theme_bw()+
+  theme(panel.spacing=unit(1,"lines"),
+        legend.position = "bottom",
+        plot.subtitle = element_text(family = "Consolas"),
+        axis.text.x = element_text(angle = 45, hjust = 0.5, vjust = 0.5))
+dev.off()
+```
+
+#### Region model fit on the data
+
+```{r}
+pdf("Saved_Plots/Regression_fits/JAGS_region_model_fit.pdf",
+    width = 12,
+    height = 9)
+
+ggplot(PISA_Europe_Data, aes(x=year_orig, y=math))+ 
+  geom_point()+
+  ggh4x::facet_nested_wrap(vars(Region, Country), nrow = 5)+
+  geom_abline(data= JAGS_Rcountry_IS_Est, aes(slope=year_orig, intercept= Intercept), color="blue3")+
+  scale_x_continuous(breaks = seq(-15,0,3),labels = function(x) x+2018)+
+  xlab("year")+ ggtitle("Region hierarchical model fit of average maths scores over time")+
+  theme_bw()+
+  theme(panel.spacing=unit(1,"lines"),
+        legend.position = "bottom",
+        plot.subtitle = element_text(family = "Consolas"),
+        axis.text.x = element_text(angle = 45, hjust = 0.5, vjust = 0.5))
+dev.off()
+```
+
+#### Income model fit on the data
+
+```{r}
+pdf("Saved_Plots/Regression_fits/JAGS_income_model_fit.pdf",
+    width = 12,
+    height = 9) 
+
+ggplot(PISA_Europe_Data, aes(x=year_orig, y=math))+ 
+  geom_point()+
+  ggh4x::facet_nested_wrap(vars(Income, Country), nrow = 5)+
+  geom_abline(data= JAGS_Icountry_IS_Est, aes(slope=year_orig, intercept= Intercept), color="red4")+
+  scale_x_continuous(breaks = seq(-15,0,3),labels = function(x) x+2018)+
+  xlab("year")+ ggtitle("Income hierarchical model fit of average maths scores over time")+
+  theme_bw()+
+  theme(panel.spacing=unit(1,"lines"),
+        legend.position = "bottom",
+        plot.subtitle = element_text(family = "Consolas"),
+        axis.text.x = element_text(angle = 45, hjust = 0.5, vjust = 0.5))
+dev.off()
+```
