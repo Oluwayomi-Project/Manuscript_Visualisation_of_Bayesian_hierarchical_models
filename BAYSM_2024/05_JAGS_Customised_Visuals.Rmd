@@ -1,0 +1,484 @@
+---
+title: "Visuals to compare the model estimates"
+author: "Oluwayomi Akinfenwa"
+date: "08/03/2024"
+output:
+  html_document:
+    toc: yes
+    toc_depth: '4'
+    df_print: paged
+  bookdown::html_document2:
+    toc: no
+    toc_float: yes
+    toc_depth: 4
+    number_sections: yes
+  pdf_document:
+    toc: yes
+    toc_depth: '4'
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+options(knitr.duplicate.label = 'allow')
+```
+
+### Loading the Rmd file containing the BRMS model fitting and extracting the model estimates.
+
+```{r, libraries, include = FALSE}
+source(knitr::purl("04_JAGS_Model_Estimates.Rmd"))
+```
+
+A plot showing the model estimates and credible intervals (80% and 95%), facet by country and connecting the dots for the estimates from the 4 models (An independent model fits, Country-specific model and Region, Income, Income-Region hierarchical models).
+
+```{r}
+## Hierarchical estimates
+##Intercepts
+JAGS_Combined_Int_estimates <- rbind(JAGS_Country_Int_est, JAGS_Region_Int_est, 
+                                JAGS_Income_Int_est, JAGS_IncomeRegion_Int_est) |>
+  arrange(Country)
+
+JAGS_Combined_Slop_estimates <- rbind(JAGS_Country_Slop_est, JAGS_Region_Slop_est, JAGS_Income_Slop_est, JAGS_IncomeRegion_Slop_est)|>
+  arrange(Country)
+
+JAGS_Combined_Int_estimates$Model <- factor(JAGS_Combined_Int_estimates$Model, 
+                  levels = c("Country \nModel","Region \nModel", "Income \nModel", "Income-Region \nModel"))
+
+JAGS_Combined_Slop_estimates$Model <- factor(JAGS_Combined_Slop_estimates$Model, 
+                  levels = c("Country \nModel","Region \nModel", "Income \nModel", "Income-Region \nModel"))
+
+## Countries estimates
+JAGS_Combined_Int_Estimates <- rbind(JAGS_CountryInd_Int_Est,
+                            JAGS_Country_Int_Est, JAGS_Region_Int_Est,
+                            JAGS_Income_Int_Est, JAGS_Income_Region_Int_Est) |>
+  arrange(Country)
+
+JAGS_Combined_Slop_Estimates <- rbind(JAGS_CountryInd_Slop_Est,
+                            JAGS_Country_Slop_Est, JAGS_Region_Slop_Est,
+                            JAGS_Income_Slop_Est, JAGS_Income_Region_Slop_Est) |>
+  arrange(Country)
+
+
+JAGS_Combined_Int_Estimates$Model <- factor(JAGS_Combined_Int_Estimates$Model, 
+                 levels = c("Independent \nModel","Country \nModel",
+                             "Region \nModel", "Income \nModel",
+                             "Income-Region \nModel"))
+
+JAGS_Combined_Slop_Estimates$Model <- factor(JAGS_Combined_Slop_Estimates$Model, 
+                  levels = c("Independent \nModel","Country \nModel",
+                            "Region \nModel", "Income \nModel",
+                             "Income-Region \nModel"))
+```
+
+```{r}
+## Creating a grid for colors
+Names <- country_region |>
+  left_join(INCOME, join_by(Country == Country))
+
+Region_color <- c("Eastern Europe" = "lightsteelblue2",
+                  "Northern Europe"="lavenderblush2", 
+                  "Southern Europe"= "bisque2",
+                  "Western Europe"="#ACE1AF")
+
+Income_color <- c("High Income" = "black",
+                  "Middle Income" = "magenta3")
+
+Colors <- Names |>
+  select(Country, Region, Income) |>
+  mutate(color_region = Region_color[Region],
+         color_income = Income_color[Income]) |>
+  as.data.frame()
+
+
+color_flag <- c("Independent \nModel" ="darkolivegreen4" ,
+                "Country \nModel" ="purple2",
+                "Region \nModel" = "blue3",
+                "Income \nModel" = "brown4",
+                "Income-Region \nModel"= "darkgoldenrod3")
+
+```
+
+### The plots using the geo_facet to group the countries according to its position on the map.
+
+```{r}
+load(here::here("PISA_Data", "ISO Code.Rdata"))
+C_codes <- ISO_Group |> filter(Continent == "Europe") |>
+  select(name =Country, code = CNT)
+ C_codes$name <- as.character(C_codes$name)
+ C_codes <- C_codes |> arrange(name)
+
+
+row<-c(7,5,3,4,5,5,6,4,2,1,1,5,3,7,4,1,2,6,2,4,
+       2,4,6,7,4,6,3,1,3,6,4,2,5,3,5,6,1,5,3,2)
+
+col<-c(6,4,7,2,6,8,5,5,4,7,6,2,4,7,6,1,1,4,7,4,
+       6,3,7,4,8,6,3,4,5,1,7,8,7,6,5,2,5,3,8,2)
+
+geo_grid <- cbind(row,col,C_codes)
+
+
+## Comparing the model estimates
+if (!dir.exists(here::here("Saved_Plots/Comparison_Visuals")))
+  dir.create(here::here("Saved_Plots/Comparison_Visuals"))
+
+JAGS_Int <- ggplot(data = JAGS_Combined_Int_Estimates)+
+  geom_line(aes(x = Model, y = median(rvar), group = Country), linetype = "solid", color = "grey45")+
+  ggdist::stat_pointinterval(aes(x = Model, ydist =rvar,color = Model),
+                       point_size = 1.3, .width = c(.80,.95)) +
+  ggdist::stat_pointinterval(data = JAGS_Combined_Int_estimates,
+             aes(x = Model, ydist = rvar, color = Model), .width = c(.80,.95),
+             point_size = 1.3,alpha = 0.35, position=position_nudge(x = 0.15), width = 0.1)+
+  scale_color_manual(values = color_flag)+
+  facet_geo(~Country, grid = geo_grid, scales= "free_y")+
+  labs(x = " ", y = "Intercept estimates")+
+  theme_bw()+
+  theme(
+    axis.text.x = element_blank(), axis.ticks.x=element_blank(),
+        strip.text.x = element_text(size = 9.5, face = "plain",
+                                    margin = margin(0.12,0,0.12,0, "cm")),
+        axis.text.y = element_text(size = 9.5,face = "bold"),
+      legend.position = "bottom")
+
+JAGS_Slope <- ggplot(data = JAGS_Combined_Slop_Estimates)+
+  geom_line(aes(x = Model, y = median(rvar), group = Country), linetype = "solid", color = "grey45")+
+  ggdist::stat_pointinterval(aes(x = Model, ydist =rvar,color = Model),
+                       point_size = 1.3, .width = c(.80,.95)) +
+    ggdist::stat_pointinterval(data = JAGS_Combined_Slop_estimates,
+             aes(x = Model, ydist = rvar, color = Model), .width = c(.80,.95),
+             point_size = 1.3,alpha = 0.28, position=position_nudge(x = 0.20), width = 0.1)+
+  scale_color_manual(values = color_flag)+
+  facet_geo(~Country, grid = geo_grid, scales= "free_y")+
+  labs(x = " ", y = "Slope estimates")+
+  theme_bw()+
+  theme(axis.text.x = element_blank(), axis.ticks.x=element_blank(),
+        strip.text.x = element_text(size = 10.5, face = "plain", margin = margin(0.13,0,0.13,0, "cm")),
+        axis.text.y = element_text(size = 10,face = "bold"),
+      legend.position = "bottom")
+  
+#-------------------------------------------------------------------------------
+
+pdf("Saved_Plots/Comparison_Visuals/JAGS_Intercept.pdf",
+    width = 14,
+    height = 10)
+G <- get_geofacet_grob(JAGS_Int) # for geo_facet plots
+# g <- ggplotGrob(p) # for other ggplots
+
+stript <- which(grepl('strip-t', G$layout$name)) 
+
+for (i in stript){
+  j <- which(grepl('rect', G$grobs[[i]]$grobs[[1]]$childrenOrder))
+  k <- which(grepl('text', G$grobs[[i]]$grobs[[1]]$childrenOrder))
+  grobtext <- G$grobs[[i]]$grobs[[1]]$children[[k]]$children[[1]]$label
+  st <- match(grobtext,Colors$Country)
+  if (!is.na(st)){
+    G$grobs[[i]]$grobs[[1]]$children[[j]]$gp$fill <- Colors[st, "color_region"]
+    r <- which(grepl('text', G$grobs[[i]]$grobs[[1]]$children[[k]]$childrenOrder))
+    G$grobs[[i]]$grobs[[1]]$children[[k]]$children[[r]]$gp$col <- Colors[st, "color_income"]
+  } 
+}
+
+grid.draw(G)
+dev.off()
+
+###Slope
+pdf("Saved_Plots/Comparison_Visuals/JAGS_Slope.pdf",
+    width = 14,
+    height = 10)
+
+P <- get_geofacet_grob(JAGS_Slope) # for geo_facet plots
+
+stript <- which(grepl('strip-t', P$layout$name)) 
+
+for (i in stript){
+  j <- which(grepl('rect', P$grobs[[i]]$grobs[[1]]$childrenOrder))
+  k <- which(grepl('text', P$grobs[[i]]$grobs[[1]]$childrenOrder))
+  grobtext <- P$grobs[[i]]$grobs[[1]]$children[[k]]$children[[1]]$label
+  st <- match(grobtext,Colors$Country)
+  if (!is.na(st)){
+    P$grobs[[i]]$grobs[[1]]$children[[j]]$gp$fill <- Colors[st, "color_region"]
+    r <- which(grepl('text', P$grobs[[i]]$grobs[[1]]$children[[k]]$childrenOrder))
+    P$grobs[[i]]$grobs[[1]]$children[[k]]$children[[r]]$gp$col <- Colors[st, "color_income"]
+  } 
+}
+
+grid.draw(P)
+dev.off()
+```
+
+#### Comparing country estimates
+
+```{r}
+JAGS_int <- ggplot(data = JAGS_Combined_Int_Estimates)+
+  geom_line(aes(x = Model, y = median(rvar), group = Country), linetype = "dashed")+
+  ggdist::stat_pointinterval(aes(x = Model, ydist =rvar,color = Model),
+                       point_size = 1.3, .width = c(.80,.95)) +
+  ggdist::stat_pointinterval(data = JAGS_Combined_Int_estimates,
+             aes(x = Model, ydist = rvar, color = Model), .width = c(.80,.95),
+             point_size = 1.3,alpha = 0.28, position=position_nudge(x = 0.20), width = 0.1)+
+  scale_color_manual(values = color_flag)+
+  facet_geo(~Country, grid = geo_grid)+
+  labs(x = " ", y = "Intercept estimates")+
+  theme_bw()+
+  theme(
+    axis.text.x = element_blank(), axis.ticks.x=element_blank(),
+        strip.text.x = element_text(size = 9.5, face = "plain",
+                                    margin = margin(0.12,0,0.12,0, "cm")),
+        axis.text.y = element_text(size = 9.5,face = "bold"),
+      legend.position = "bottom")
+
+JAGS_slop <- ggplot(data = JAGS_Combined_Slop_Estimates)+
+  geom_line(aes(x = Model, y = median(rvar), group = Country), linetype = "dashed")+
+  ggdist::stat_pointinterval(aes(x = Model, ydist =rvar,color = Model),
+                       point_size = 1.3, .width = c(.80,.95)) +
+    ggdist::stat_pointinterval(data = JAGS_Combined_Slop_estimates,
+             aes(x = Model, ydist = rvar, color = Model), .width = c(.80,.95),
+             point_size = 1.3,alpha = 0.35, position=position_nudge(x = 0.15), width = 0.1)+
+  scale_color_manual(values = color_flag)+
+  facet_geo(~Country, grid = geo_grid, scales= "free_y")+
+  labs(x = " ", y = "Slope estimates")+
+  theme_bw()+
+  theme(axis.text.x = element_blank(), axis.ticks.x=element_blank(),
+        strip.text.x = element_text(size = 10.5, face = "plain", margin = margin(0.13,0,0.13,0, "cm")),
+        axis.text.y = element_text(size = 10,face = "bold"),
+      legend.position = "bottom")
+  
+#-------------------------------------------------------------------------------
+
+pdf("Saved_Plots/Comparison_Visuals/JAGS_Comparingcountry_Intercept.pdf",
+    width = 14,
+    height = 10)
+g <- get_geofacet_grob(JAGS_int) # for geo_facet plots
+# g <- ggplotGrob(p) # for other ggplots
+
+stript <- which(grepl('strip-t', g$layout$name)) 
+
+for (i in stript){
+  j <- which(grepl('rect', g$grobs[[i]]$grobs[[1]]$childrenOrder))
+  k <- which(grepl('text', g$grobs[[i]]$grobs[[1]]$childrenOrder))
+  grobtext <- g$grobs[[i]]$grobs[[1]]$children[[k]]$children[[1]]$label
+  st <- match(grobtext,Colors$Country)
+  if (!is.na(st)){
+    g$grobs[[i]]$grobs[[1]]$children[[j]]$gp$fill <- Colors[st, "color_region"]
+    r <- which(grepl('text', g$grobs[[i]]$grobs[[1]]$children[[k]]$childrenOrder))
+    g$grobs[[i]]$grobs[[1]]$children[[k]]$children[[r]]$gp$col <- Colors[st, "color_income"]
+  } 
+}
+
+grid.draw(g)
+dev.off()
+
+###Slope
+pdf("Saved_Plots/Comparison_Visuals/JAGS_Comparingcountry_Slope.pdf",
+    width = 14,
+    height = 10)
+
+P <- get_geofacet_grob(JAGS_slop) # for geo_facet plots
+
+stript <- which(grepl('strip-t', P$layout$name)) 
+
+for (i in stript){
+  j <- which(grepl('rect', P$grobs[[i]]$grobs[[1]]$childrenOrder))
+  k <- which(grepl('text', P$grobs[[i]]$grobs[[1]]$childrenOrder))
+  grobtext <- P$grobs[[i]]$grobs[[1]]$children[[k]]$children[[1]]$label
+  st <- match(grobtext,Colors$Country)
+  if (!is.na(st)){
+    P$grobs[[i]]$grobs[[1]]$children[[j]]$gp$fill <- Colors[st, "color_region"]
+    r <- which(grepl('text', P$grobs[[i]]$grobs[[1]]$children[[k]]$childrenOrder))
+    P$grobs[[i]]$grobs[[1]]$children[[k]]$children[[r]]$gp$col <- Colors[st, "color_income"]
+  } 
+}
+
+grid.draw(P)
+dev.off()
+```
+
+
+
+### Selecting few countries to investigate.
+
+Countries with one data point, and countries where the hierarchical structure downweight its estimate are worthy of careful observation.
+
+Countries like; Albania, Belarus, Ukraine, Moldova, Macedonia,
+Finland, Luxembourg, Liechtenstein, Czechia, Switzerland.
+
+We want to investigate 10 countries. The first thing to do is to filter out the regression line on the data across the different fitted model for these countries.
+
+```{r}
+QCountries <- c("Albania", "Belarus", "Ukraine", "Moldova", "Macedonia",
+                "Bosnia and Herzegovina","Finland", "Luxembourg", 
+                "Liechtenstein", "Czechia", "Sweden", "Germany")
+
+#Filtering the colors for the selected countries
+QColors <- Colors |>
+  filter(Country %in% QCountries)
+
+
+pdf("Saved_Plots/Comparison_Visuals/JAGS_few-country_fit.pdf",
+    width = 12,
+    height = 9)
+
+ggplot(data = filter(PISA_Europe_Data, Country %in% QCountries), 
+       aes(x=year_orig, y=math))+ 
+  geom_point()+
+  ggh4x::facet_wrap2(~Country, nrow = 4)+
+  geom_abline(data=filter(JAGS_CountryInd_ISEst, Country %in% QCountries), aes(slope=year_orig, intercept= Intercept), color="lightseagreen")+
+  geom_abline(data=filter(JAGS_Country_IS_Est, Country %in% QCountries), 
+              aes(slope=year_orig, intercept= Intercept), color="magenta3")+
+  geom_abline(data=filter(JAGS_Rcountry_IS_Est, Country %in% QCountries),
+              aes(slope=year_orig, intercept= Intercept), color="blue3")+
+geom_abline(data=filter(JAGS_Icountry_IS_Est, Country %in% QCountries),
+            aes(slope=year_orig, intercept= Intercept), color="yellow4")+
+ geom_abline(data=filter(JAGS_IRcountry_IS_Est, Country %in% QCountries),
+             aes(slope=year_orig, intercept= Intercept), color="indianred")+
+  scale_x_continuous(breaks = seq(-15,0,3),labels = function(x) x+2018)+
+  xlab("year")+ ggtitle("Independent Model = lightseagreen \n Country-specific model = Magenta \n Region hierarchical model = blue \n Income hierarchical model = yellow \n Income-Region hierarchical model = Indianred")+
+  theme_bw()+
+  theme(panel.spacing=unit(1,"lines"),
+        legend.position = "bottom",
+        plot.subtitle = element_text(family = "Consolas"),
+        axis.text.x = element_text(angle = 45, hjust = 0.5, vjust = 0.5))
+
+dev.off()
+
+```
+
+```{r}
+## Intercept
+A1 <- ggplot(data=filter(JAGS_Combined_Int_Estimates, Country %in% QCountries))+
+geom_line(aes(x = Model, y = median(rvar), group = Country), linetype = "solid", color = "grey45")+
+  ggdist::stat_pointinterval(aes(x = Model, ydist =rvar,color = Model),
+                       point_size = 1.3, .width = c(.80,.95)) +
+  ggdist::stat_pointinterval(data = filter(JAGS_Combined_Int_estimates, Country %in% QCountries),
+             aes(x = Model, ydist = rvar, color = Model), .width = c(.80,.95),
+             point_size = 1.3,alpha = 0.35, position=position_nudge(x = 0.15), width = 0.1)+
+  scale_color_manual(values = color_flag)+
+ ggh4x::facet_wrap2(~Country, scales= "free_y", nrow = 4)+
+  labs(x = " ", y = "Slope estimates")+
+  theme_bw()+
+  theme(axis.text.x = element_blank(), 
+        axis.ticks.x=element_blank(),
+        strip.text.x = element_text(size = 10.5, face = "plain", margin = margin(0.13,0,0.13,0, "cm")),
+      legend.position = "bottom")
+
+#Comparing the country estimates 
+a1 <- ggplot(data=filter(JAGS_Combined_Int_Estimates, Country %in% QCountries))+
+geom_line(aes(x = Model, y = median(rvar), group = Country), linetype = "solid", color = "grey45")+
+  ggdist::stat_pointinterval(aes(x = Model, ydist =rvar,color = Model),
+                       point_size = 1.3, .width = c(.80,.95)) +
+  ggdist::stat_pointinterval(data = filter(JAGS_Combined_Int_estimates, Country %in% QCountries),
+             aes(x = Model, ydist = rvar, color = Model), .width = c(.80,.95),
+             point_size = 1.3, alpha = 0.35, position=position_nudge(x = 0.15), width = 0.1)+
+  scale_color_manual(values = color_flag)+
+ ggh4x::facet_wrap2(~Country, nrow = 4)+
+  labs(x = " ", y = "Slope estimates")+
+  theme_bw()+
+  theme(axis.text.x = element_blank(), 
+        axis.ticks.x=element_blank(),
+        strip.text.x = element_text(size = 10.5, face = "plain", margin = margin(0.13,0,0.13,0, "cm")),
+      legend.position = "bottom")
+
+pdf("Saved_Plots/Comparison_Visuals/JAGS_FewerC_Intercept.pdf",
+    width = 12,
+    height = 9)
+
+G <- ggplotGrob(A1)
+# g$layout$name
+Strip <- which(grepl('strip', G$layout$name)) 
+
+
+for (i in Strip){
+  j <- which(grepl('rect', G$grobs[[i]]$grobs[[1]]$childrenOrder))
+  k <- which(grepl('text', G$grobs[[i]]$grobs[[1]]$childrenOrder))
+  grobtext <- G$grobs[[i]]$grobs[[1]]$children[[k]]$children[[1]]$label
+  st <- match(grobtext, QColors$Country)
+  if (!is.na(st)){
+    G$grobs[[i]]$grobs[[1]]$children[[j]]$gp$fill <- QColors[st, "color_region"]
+    r <- which(grepl('text', G$grobs[[i]]$grobs[[1]]$children[[k]]$childrenOrder))
+    G$grobs[[i]]$grobs[[1]]$children[[k]]$children[[r]]$gp$col <- QColors[st, "color_income"]
+  }
+}
+grid.draw(G)
+dev.off()
+```
+
+
+```{r}
+## Slope
+
+A2 <- ggplot(data=filter(JAGS_Combined_Slop_Estimates, Country %in% QCountries))+
+geom_line(aes(x = Model, y = median(rvar), group = Country), linetype = "solid", color = "grey45")+
+  ggdist::stat_pointinterval(aes(x = Model, ydist =rvar,color = Model),
+                       point_size = 1.3, .width = c(.80,.95)) +
+  ggdist::stat_pointinterval(data = filter(JAGS_Combined_Slop_estimates, Country %in% QCountries),
+             aes(x = Model, ydist = rvar, color = Model), .width = c(.80,.95),
+             point_size = 1.3,alpha = 0.35, position=position_nudge(x = 0.15), width = 0.1)+
+  scale_color_manual(values = color_flag)+
+ ggh4x::facet_wrap2(~Country, scales= "free_y", nrow = 4)+
+  labs(x = " ", y = "Slope estimates")+
+  theme_bw()+
+  theme(axis.text.x = element_blank(), 
+        axis.ticks.x=element_blank(),
+        strip.text.x = element_text(size = 10.5, face = "plain", margin = margin(0.13,0,0.13,0, "cm")),
+      legend.position = "bottom")
+
+#Comparing the country estimates 
+a2 <- ggplot(data=filter(JAGS_Combined_Slop_Estimates, Country %in% QCountries))+
+geom_line(aes(x = Model, y = median(rvar), group = Country), linetype = "solid", color = "grey45")+
+  ggdist::stat_pointinterval(aes(x = Model, ydist =rvar,color = Model),
+                       point_size = 1.3, .width = c(.80,.95)) +
+  ggdist::stat_pointinterval(data = filter(JAGS_Combined_Slop_estimates, Country %in% QCountries),
+             aes(x = Model, ydist = rvar, color = Model), .width = c(.80,.95),
+             point_size = 1.3, alpha = 0.35, position=position_nudge(x = 0.15), width = 0.1)+
+  scale_color_manual(values = color_flag)+
+ ggh4x::facet_wrap2(~Country, nrow = 4)+
+  labs(x = " ", y = "Slope estimates")+
+  theme_bw()+
+  theme(axis.text.x = element_blank(), 
+        axis.ticks.x=element_blank(),
+        strip.text.x = element_text(size = 10.5, face = "plain", margin = margin(0.13,0,0.13,0, "cm")),
+      legend.position = "bottom")
+
+pdf("Saved_Plots/Comparison_Visuals/JAGS_FewerC_Slope.pdf",
+    width = 12,
+    height = 9)
+
+G2 <- ggplotGrob(A2)
+# g$layout$name
+Strip2 <- which(grepl('strip', G2$layout$name)) 
+
+for (i in Strip2){
+  j <- which(grepl('rect', G2$grobs[[i]]$grobs[[1]]$childrenOrder))
+  k <- which(grepl('text', G2$grobs[[i]]$grobs[[1]]$childrenOrder))
+  grobtext <- G2$grobs[[i]]$grobs[[1]]$children[[k]]$children[[1]]$label
+  st <- match(grobtext, QColors$Country)
+  if (!is.na(st)){
+    G2$grobs[[i]]$grobs[[1]]$children[[j]]$gp$fill <- QColors[st, "color_region"]
+    r <- which(grepl('text', G2$grobs[[i]]$grobs[[1]]$children[[k]]$childrenOrder))
+    G2$grobs[[i]]$grobs[[1]]$children[[k]]$children[[r]]$gp$col <- QColors[st, "color_income"]
+  }
+}
+grid.draw(G2)
+dev.off()
+
+pdf("Saved_Plots/Comparison_Visuals/JAGS_FewerC_Comparing-country-Slope.pdf",
+    width = 12,
+    height = 9)
+
+g <- ggplotGrob(a2)
+# g$layout$name
+Strip <- which(grepl('strip', g$layout$name)) 
+
+
+for (i in Strip){
+  j <- which(grepl('rect', g$grobs[[i]]$grobs[[1]]$childrenOrder))
+  k <- which(grepl('text', g$grobs[[i]]$grobs[[1]]$childrenOrder))
+  grobtext <- g$grobs[[i]]$grobs[[1]]$children[[k]]$children[[1]]$label
+  st <- match(grobtext, QColors$Country)
+  if (!is.na(st)){
+    g$grobs[[i]]$grobs[[1]]$children[[j]]$gp$fill <- QColors[st, "color_region"]
+    r <- which(grepl('text', g$grobs[[i]]$grobs[[1]]$children[[k]]$childrenOrder))
+    g$grobs[[i]]$grobs[[1]]$children[[k]]$children[[r]]$gp$col <- QColors[st, "color_income"]
+  }
+}
+grid.draw(g)
+dev.off()
+```
