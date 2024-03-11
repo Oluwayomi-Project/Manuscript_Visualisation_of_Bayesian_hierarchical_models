@@ -171,11 +171,11 @@ yrep[i] ~ dnorm(mu.i[i], sigma^-2)
 "
 
 ## JAGS Model
-Ind_C_Jags.data <- list(y.i = SPISA_Europe_Data$math,
-                    x.i = SPISA_Europe_Data$year_orig,
-                    n = nrow(SPISA_Europe_Data),
-                    n_C = SPISA_Europe_Data$Country |> unique() |> length(),
-                    C = as.numeric(factor(SPISA_Europe_Data$Country)),
+Ind_C_Jags.data <- list(y.i = SPisa_Europe_Data$math,
+                    x.i = SPisa_Europe_Data$year_orig,
+                    n = nrow(SPisa_Europe_Data),
+                    n_C = SPisa_Europe_Data$Country |> unique() |> length(),
+                    C = as.numeric(factor(SPisa_Europe_Data$Country)),
                     n_pred = nrow(Spred_grid),
                     C_pred = Spred_grid$Country_num,
                     xpred.m = Spred_grid$year_orig)
@@ -535,10 +535,5 @@ IR_JAGSModel <- jags(data = IR_Jags.data,
                 n.thin = 4)
 
 save(IR_JAGSModel, file=here::here("Manuscript_Models", "IncomeRegion_JAGSModel.Rdata"))
-```
-
-
-```{r}
-PISA_Europe_Data
 ```
 
