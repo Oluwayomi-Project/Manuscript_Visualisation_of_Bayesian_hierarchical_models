@@ -35,6 +35,7 @@ library(bayesplot)
 library(patchwork)
 library(ggragged)
 library(geofacet)
+library(grid)
 ```
 
 Loading the PISA data for the European countries Europe_Pisamaths.Rdata.
