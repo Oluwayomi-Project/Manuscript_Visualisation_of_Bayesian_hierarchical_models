@@ -11,9 +11,28 @@
 
 **This Rmarkdown file contains the codes for the exploratory data analysis.**
 
-### 03_Hierarchical model.Rmd
+A separate linear model is fitted for each country using lm fit, and the resulting estimates are displayed by categorising the countries based on both Region and Income.
 
-The proposed models for the PISA analysis are fitted here, but there are many divergent transition and majority of the models have this error message: 
-**Warning: Bulk Effective Samples Size (ESS) is too low, indicating posterior means and medians may be unreliable.**
+In order to accomplish this, we utilised the ggragged package to cluster the countries based on their geographical region classification, ordering the countries in each cluster by ascending slopes. Additionally, the patchwork package was employed to arrange the income categorization horizontally. We then applied unique colors to distinguish between the region and income categories.
+
+### 03_Hierarchical model.Rmd
+There are two distinct files with this naming; 03_BRMS_Hierarchical_Model.Rmd and 03_JAGS_Hierarchical_Model.Rmd.
+
+We fitted an independent model, country-specific model, and Region, Income, Income-Region hierarchical model with the PISA data set from 2003 to 2018.
+
+### 04_Model Estimates.Rmd
+There are two distinct files with this naming; 04_BRMS_Model_Estimates.Rmd and 04_JAGS_Model_Estimates.Rmd.
+
+From the fitted models, we proceeded to extract the model estimates (Intercept and slope), followed by a visual displaying the model fits on the data points.
+
+### 05_Customised_Visualisations.Rmd
+There are two distinct files with this nomenclature; 05_BRMS_Customised_Visualisations.Rmd and 05_JAGS_Customised_Visualisations.Rmd.
+
+The main aim of this research is to propose a visualisation approach for model comparison and selection. To achieve this, we used the geofacet package to arrange the countries according to their position on the Europe map. The model estimates across all the fitted models alongside the hierarchical model estimates were represented using the stat_intervals for the 80% and 95% credible intervals.
+
+### 06_Model Prediction
+There are two distinct files with this nomenclature; 06_BRMS_Model_Prediction.Rmd and 06_JAGS_Model_Prediction.Rmd.
+
+Using the fitted models, we made predictions for year 2022 and compared the estimates with the PISA 2022 data set.
 
 
