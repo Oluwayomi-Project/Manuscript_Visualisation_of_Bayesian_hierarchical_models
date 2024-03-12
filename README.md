@@ -44,6 +44,3 @@ Subsequently, we extended the model into a hierarchical structure, incorporating
 ### JAGS_Model_Estimates - .Rmd 
 
 The estimates for parameters and hyperparameters derived from the fitted model and hierarchical models were utilised to generate visual representations of the model regression line on the observed data. These visualisations are stored as "fit_ind_country_model.pdf," "fit_country_model.pdf," "fit_region_model.pdf," "fit_income_model.pdf," and "fit_incomeregion_model.pdf" within the **regression_fits folder**. 
-
-
-
