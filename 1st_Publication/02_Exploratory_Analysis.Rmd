@@ -1,0 +1,213 @@
+---
+title: "Exploratory data analysis for the new data"
+author: "Oluwayomi Akinfenwa"
+date: "08/02/2024"
+output:
+  pdf_document:
+    toc: yes
+    toc_depth: '4'
+  bookdown::html_document2:
+    toc: no
+    toc_float: yes
+    toc_depth: 4
+    number_sections: yes
+  html_document:
+    toc: yes
+    toc_depth: '4'
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+options(knitr.duplicate.label = 'allow')
+```
+
+Creating a folder to store all the plots
+
+```{r, libraries, include = FALSE}
+if (!dir.exists(here::here("Saved_Plots")))
+  dir.create(here::here("Saved_Plots"))
+```
+
+Sourcing the file containing all the data needed for this analysis from the Rmd file named: 01_PISA_Analysis_Data.Rmd.
+This file contains the raw data from OECD website and all the necessary data for this analysis.
+
+```{r loading the data}
+sys.source("01_BRMS_PISA_Analysis_Data.R", envir = knitr::knit_global())
+```
+
+### Exploratory data analysis
+
+The first step of this analysis is to fit a separate linear model on the data for each country and visualise the model fit grouping the countries by their region and income categories.
+
+**Fitting a linear regression model on the data set**
+**Fitting a linear regression model on the data set**
+
+```{r}
+library(broom)
+## The function reframe- creates a new data-frame by applying functions (in the previous line of code) to columns of an existing data frame.
+
+#Weighted least squares. The weight is the reciprocal of the square of the standard error.
+Country_Model <- PISA_Europe_Data |>
+  nest_by(Country) |>
+  mutate(mod = list(lm(math ~ year_orig,  data = data))) |>
+  reframe(tidy(mod))|>
+   select(Country, term, estimate)
+
+### Tidying the estimates
+### We are interested in arranging the countries according to their increasing slope.
+Country_Model_IS <- Country_Model  |>
+   pivot_wider(values_from = estimate, names_from = term) |>
+   rename("slope" = "year_orig") |>
+  mutate(slopesign = sign(slope)) |>
+  left_join(Country_region, join_by(Country)) |>
+  select(-c(Country_num, region_num)) |>
+  arrange(slope)
+```
+
+#### Visualisations - Creating the plots.
+
+```{r}
+##Merging the slope-sign with the Pisa data so that i can rearrange by both country and slope-sign
+Slopesign <- Country_Model_IS |>
+  select(Country, slope)
+
+PISA_Europe_Data1 <- PISA_Europe_Data |>
+  left_join(Slopesign, join_by(Country))
+
+PISA_Europe_Data1$facet <- factor(PISA_Europe_Data1$Region, 
+                  levels = c("Western Europe", "Northern Europe", "Eastern Europe","Southern Europe"))
+
+Country_Model_IS$facet <- factor(Country_Model_IS$Region, 
+                  levels = c("Western Europe","Northern Europe","Eastern Europe", "Southern Europe"))
+
+
+## Our interest is to create a data frame with both region and country as a dataframe assigning colors to them.
+Region_color <- c("Eastern Europe" = "lightsteelblue2",
+                  "Northern Europe"="lavenderblush2", 
+                  "Southern Europe"= "bisque2",
+                  "Western Europe"="#ACE1AF")
+
+Colors <- country_region |>
+  mutate(color = Region_color[Region]) |>mutate(Country = stringr::str_replace_all(Country, stringr::fixed("Bosnia& Herzegovina"), "Bosnia&\nHerzegovina")) |>
+  mutate(Country = stringr::str_replace_all(Country, stringr::fixed("United Kingdom"), "United\nKingdom")) |>
+  select(group = Country, color)|>
+  as.data.frame()
+
+Reg <- data.frame(group =paste(unique(country_region$Region)),
+          color = c("bisque2","#ACE1AF","lightsteelblue2","lavenderblush2"))
+
+Reg <-Reg |>
+mutate(group = recode_factor(group,
+                             `Southern Europe` = "Southern\nEurope",
+                           `Western Europe` = "Western\nEurope" ,
+                          `Eastern Europe` = "Eastern\nEurope" ,
+                         `Northern Europe` = "Northern\nEurope"))
+
+#This is necessary for the grid of the plots to specify the colors for each region.
+Group <- rbind(Reg, Colors)
+```
+
+#### Visualising the independent model fit on each country - Grouping by region.
+
+```{r}
+## In ascending slope
+pdf("Saved_Plots/fits_grouped_by_Region.pdf",
+    width = 11.5,
+    height = 9.3)
+P <- ggplot(data = PISA_Europe_Data1,
+            aes(x=year_orig, y=math))+
+  geom_point(color = "grey35")+
+  geom_abline(data= Country_Model_IS, 
+              aes(slope=slope, intercept= `(Intercept)`,color = factor(slopesign)))+
+  facet_ragged_rows(vars(facet = facet), 
+                    vars(reorder(Country, slope)),
+                    scales = "free_y",
+                    switch = "y",
+                  labeller=label_wrap_gen(width=6))+
+  scale_x_continuous(breaks = seq(-15,0,3),labels = function(x) x+2018) +
+  scale_y_continuous(position = "right")+
+  labs(x= " ", y = " ",  color = "Slope") + 
+  scale_color_manual(values = c("firebrick2", "blue"), labels = c("negative", "positive"), na.translate = F)+
+  theme(legend.position = "bottom", legend.box.spacing = unit(-0.6, "lines"),
+        legend.text = element_text(size = 11.5),
+        panel.spacing.y = unit(1.2, "lines"),
+        plot.subtitle = element_text(family = "Serif"),
+        axis.text.x = element_text(angle = 55, hjust = 0.5, vjust = 0.5,size = 8.5, face = "bold"),strip.text.x = element_text(size = 9.42,face = "bold"),
+        strip.text.y = element_text(size = 10,face = "bold"),
+        axis.text.y = element_text(size = 10,face = "bold"))+
+  ggtitle("Separate linear model fit of average maths scores over time for each country")
+
+G <- ggplotGrob(P)
+# g$layout$name
+Strip <- which(grepl('strip', G$layout$name)) 
+
+
+for (i in Strip){
+  j <- which(grepl('rect', G$grobs[[i]]$grobs[[1]]$childrenOrder))
+  k <- which(grepl('text', G$grobs[[i]]$grobs[[1]]$childrenOrder))
+  grobtext <- G$grobs[[i]]$grobs[[1]]$children[[k]]$children[[1]]$label
+  st <- match(grobtext, Group$group)
+  if (isTRUE( !is.na(st))){
+    G$grobs[[i]]$grobs[[1]]$children[[j]]$gp$fill <- Group[st, "color"]
+  }
+}
+
+grid.draw(G)
+
+dev.off()
+```
+
+
+
+#### Visualising the independent model fit on each country - Grouping by income.
+
+```{r}
+pdf("Saved_Plots/fit_grouped_by income.pdf",
+    width = 11.5,
+    height = 9.3)
+
+middle_income <- ggplot(data = filter(PISA_Europe_Data1, Income== "Middle Income"),
+         aes(x=year_orig, y=math))+
+  geom_point(color = "grey35")+
+   geom_abline(data= filter(Country_Model_IS, Income== "Middle Income"), 
+               aes(slope=slope, intercept= `(Intercept)`),color = "blue")+
+  ggh4x::facet_wrap2(vars(Income, reorder(Country, slope)), ncol = 10,
+  strip = ggh4x::strip_nested(bleed = TRUE))+
+  labs(x = " ", y = " ") +
+  scale_y_continuous(position = "right",breaks = seq(350,500, 50))+
+  scale_x_continuous(breaks = seq(-15,0,3),labels = function(x) x+2018)+
+  theme(strip.background = element_rect(fill="aquamarine2"),
+    strip.text.x = element_text(size = 9.2,face = "bold", color = "black"),
+        axis.text.y = element_text(size = 10,face = "bold"), 
+        axis.text.x = element_text(angle = 45, hjust = 0.5, vjust = 0.5,face = "bold"),
+        plot.title = element_text(hjust = 0.5))
+
+high_income <- ggplot(data = filter(PISA_Europe_Data1, Income== "High Income"),
+         aes(x=year_orig, y=math))+
+   geom_point(color = "grey35")+
+   geom_abline(data= filter(Country_Model_IS, Income== "High Income"), 
+               aes(slope=slope, intercept= `(Intercept)`,color = factor(slopesign)))+
+  scale_y_continuous(position = "right")+
+  ggh4x::facet_wrap2(vars(Income, reorder(Country, slope)), ncol = 10, 
+                     strip = ggh4x::strip_nested(bleed = TRUE))+
+  ggtitle("Separate linear model fit of average math scores for each country")+
+  scale_color_manual(values = c("firebrick2", "blue"), labels = c("negative", "positive"))+ 
+  labs(x = " ", y = " ", color = "Slope") +
+ scale_x_continuous(breaks = seq(-15,0,3),labels = function(x) x+2018) +
+  theme(strip.background = element_rect(fill="thistle3"),
+    strip.text.x = element_text(size = 9.2,face = "bold", color = "black"),
+        axis.text.y = element_text(size = 10,face = "bold"),
+        axis.text.x = element_blank(),
+        axis.ticks.x=element_blank(),
+        panel.spacing.y = unit(1, "lines"),
+        legend.text = element_text(size = 11.5),
+        plot.title = element_text(hjust = 0.5))
+
+high_income/middle_income +
+  plot_layout(widths = 1, heights = c(5, 1), guides = "collect") &
+   theme(legend.position = "bottom",
+         legend.box.spacing = unit(-0.6, "lines"))
+
+dev.off()
+```

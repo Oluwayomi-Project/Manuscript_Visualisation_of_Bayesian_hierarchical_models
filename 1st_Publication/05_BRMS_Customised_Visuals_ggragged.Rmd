@@ -1,0 +1,347 @@
+---
+title: "Visuals to compare the model estimates using ggragged"
+author: "Oluwayomi Akinfenwa"
+date: "18/03/2024"
+output:
+  html_document:
+    toc: yes
+    toc_depth: '4'
+    df_print: paged
+  bookdown::html_document2:
+    toc: no
+    toc_float: yes
+    toc_depth: 4
+    number_sections: yes
+  pdf_document:
+    toc: yes
+    toc_depth: '4'
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+options(knitr.duplicate.label = 'allow')
+```
+
+### Sourcing the Rmd file containing the fitted models and the extracted estimates.
+
+```{r, libraries, include = FALSE}
+source(knitr::purl("04_BRMS_Model_Estimates.Rmd"))
+
+#sys.source("04_BRMS_Model_Estimates.R", envir = knitr::knit_global())
+```
+
+A plot showing the model estimates and credible intervals (80% and 95%), facet by country and connecting the dots for the estimates from the 4 models (An independent model fits, Country-specific model and Region, Income, Income-Region hierarchical models) using *ggragged*.
+
+```{r}
+## Hierarchical estimates
+##Intercepts
+Combined_Int_estimates <- rbind(Country_Int_est,Region_Int_est, Income_Int_est,
+                              IncomeRegion_Int_est) |>
+  arrange(Country)
+
+Combined_Slop_estimates <- rbind(Country_Slop_est,Region_Slop_est, Income_Slop_est,
+                              IncomeRegion_Slop_est)|>
+  arrange(Country)
+
+Combined_Int_estimates$Model <- factor(Combined_Int_estimates$Model, 
+                  levels = c("Country \nModel","Region \nModel", "Income \nModel", "Income-Region \nModel"))
+
+Combined_Slop_estimates$Model <- factor(Combined_Slop_estimates$Model, 
+                  levels = c("Country \nModel","Region \nModel", "Income \nModel", "Income-Region \nModel"))
+
+## Countries estimates
+Combined_Int_Estimates <- rbind(CountryInd_Int_Est,
+                            Country_Int_Est,Region_Int_Est,
+                            Income_Int_Est,Income_Region_Int_Est) |>
+  arrange(Country)
+
+Combined_Slop_Estimates <- rbind(CountryInd_Slop_Est,
+                            Country_Slop_Est,Region_Slop_Est,
+                            Income_Slop_Est,Income_Region_Slop_Est) |>
+  arrange(Country)
+
+Combined_Int_Estimates$Model <- factor(Combined_Int_Estimates$Model, 
+                 levels = c("Independent \nModel","Country \nModel",
+                             "Region \nModel", "Income \nModel",
+                             "Income-Region \nModel"))
+
+Combined_Slop_Estimates$Model <- factor(Combined_Slop_Estimates$Model, 
+                  levels = c("Independent \nModel","Country \nModel",
+                            "Region \nModel", "Income \nModel",
+                             "Income-Region \nModel"))
+```
+
+#### Creating a facet with the incomeregion according to the number of countries in each region.
+
+Re-creating the plots of the model estimates (country estimates and the hierarchical estimates) using the ggragged package, to facilitate comparison across the countries in the same group.
+
+```{r}
+#The income grouping is necessary to specify different color for each income group, hence, the need to left_join the Country_income names.
+Combined_Int_Estimates <- Combined_Int_Estimates |>
+left_join(select(Country_income, Country, Income), join_by(Country)) |>
+  mutate(Income_Region = stringr::str_replace_all(Income_Region,
+          stringr::fixed("_ "), "\n"))
+
+Combined_Int_estimates <- Combined_Int_estimates |>
+left_join(select(Country_income, Country, Income), join_by(Country)) |>
+  mutate(Income_Region = stringr::str_replace_all(Income_Region,
+          stringr::fixed("_ "), "\n"))
+
+Combined_Slop_Estimates <- Combined_Slop_Estimates |>
+left_join(select(Country_income, Country, Income), join_by(Country)) |>
+  mutate(Income_Region = stringr::str_replace_all(Income_Region,
+          stringr::fixed("_ "), "\n"))
+
+Combined_Slop_estimates <- Combined_Slop_estimates |>
+left_join(select(Country_income, Country, Income), join_by(Country)) |>
+  mutate(Income_Region = stringr::str_replace_all(Income_Region,
+          stringr::fixed("_ "), "\n"))
+
+#-------------------------------------------------------------------------------
+# Creating a facet for the income-region group.
+# Intercept
+Combined_Int_Estimates$facet <- factor(Combined_Int_Estimates$Income_Region,
+        levels = c("Middle Income\nEastern Europe", "Middle Income\nSouthern Europe", "High Income\nEastern Europe", "High Income\nSouthern Europe","High Income\nWestern Europe","High Income\nNorthern Europe"))
+
+Combined_Int_estimates$facet <- factor(Combined_Int_estimates$Income_Region,
+        levels = c("Middle Income\nEastern Europe", "Middle Income\nSouthern Europe", "High Income\nEastern Europe", "High Income\nSouthern Europe","High Income\nWestern Europe","High Income\nNorthern Europe"))
+
+# Slope
+Combined_Slop_Estimates$facet <- factor(Combined_Slop_Estimates$Income_Region,
+                                        levels = c("Middle Income\nEastern Europe", "Middle Income\nSouthern Europe", "High Income\nEastern Europe", "High Income\nSouthern Europe","High Income\nWestern Europe","High Income\nNorthern Europe"))
+
+Combined_Slop_estimates$facet <- factor(Combined_Slop_estimates$Income_Region,
+                                        levels = c("Middle Income\nEastern Europe", "Middle Income\nSouthern Europe", "High Income\nEastern Europe", "High Income\nSouthern Europe","High Income\nWestern Europe","High Income\nNorthern Europe"))
+```
+
+#### Creating the colors for the grid.draws
+
+```{r}
+## Creating a grid for colors
+Names <- Country_incomeregion |>
+  select(Country, Region, Income, Income_Region)
+
+# Specifying color flag for the different model fitted
+color_flag <- c("Independent \nModel" ="darkolivegreen4" ,
+                "Country \nModel" ="purple2",
+                "Region \nModel" = "blue3",
+                "Income \nModel" = "brown4",
+                "Income-Region \nModel"= "darkgoldenrod3")
+
+## Specifying color flag for the income-region grouping
+IR_color_flag <- c("Middle Income_ Eastern Europe" = "lightsteelblue2",
+                   "Middle Income_ Southern Europe" = "bisque2", 
+                   "High Income_ Eastern Europe" = "lightsteelblue2", 
+                   "High Income_ Southern Europe" = "bisque2",
+                   "High Income_ Western Europe" = "#ACE1AF",
+                   "High Income_ Northern Europe" = "lavenderblush2")
+
+## Specifying color flag for the income grouping
+Income_color <- c("High Income" = "black",
+                  "Middle Income" = "magenta3")
+
+IR <- data.frame(group =paste(unique(Combined_Int_Estimates$Income_Region)),
+                  color_IR = c("bisque2", "#ACE1AF", "lightsteelblue2", "bisque2","lightsteelblue2","lavenderblush2"), color_I = c("magenta3", "black","magenta3", "black", "black", "black"))
+
+IR_color <- Names |>
+  mutate(color_IR = IR_color_flag[Income_Region],
+         color_I = Income_color[Income]) |>
+  mutate(Country = stringr::str_replace_all(Country, stringr::fixed("Bosnia& Herzegovina"), "Bosnia&\nHerzegovina")) |>
+  select(group = Country, color_IR, color_I) |>
+  as.data.frame()
+
+IR_Colors <- rbind(IR, IR_color)
+```
+
+Creating plots of the model estimates using the ggragged package.
+
+```{r}
+## Comparing the model estimates
+if (!dir.exists(here::here("Saved_Plots/Comparison_Visuals")))
+  dir.create(here::here("Saved_Plots/Comparison_Visuals"))
+
+Intc <- ggplot(data = Combined_Int_Estimates)+
+  geom_line(aes(x = Model, y = median(rvar), group = Country), linetype = "solid", color = "grey45")+
+  ggdist::stat_pointinterval(aes(x = Model, ydist =rvar,color = Model),
+                       point_size = 1.3, .width = c(.80,.95)) +
+  ggdist::stat_pointinterval(data = Combined_Int_estimates,
+             aes(x = Model, ydist = rvar, color = Model), .width = c(.80,.95),
+             point_size = 1.3,alpha = 0.28, position=position_nudge(x = 0.20), width = 0.1)+
+  scale_color_manual(values = color_flag)+
+  facet_ragged_rows(vars(facet),
+                    vars(Country),
+                    scales = "free_y",
+                    labeller = label_wrap_gen(width= 17))+
+  labs(x = " ", y = "Intercept Estimates")+ theme_bw()+
+  theme(
+    axis.text.x = element_blank(), axis.ticks.x=element_blank(),
+    strip.text.x = element_text(size = 11.5, face = "plain",
+            margin = margin(0.12,0,0.12,0, "cm")),
+      axis.text.y = element_text(size = 11,face = "bold"),
+      axis.title=element_text(size=14, face="bold"),
+     legend.position = "bottom", legend.text=element_text(size=11, face = "italic"))
+
+Slop <- ggplot(data = Combined_Slop_Estimates)+
+  geom_line(aes(x = Model, y = median(rvar), group = Country), linetype = "solid", color = "grey45")+
+  ggdist::stat_pointinterval(aes(x = Model, ydist =rvar,color = Model),
+                       point_size = 1.3, .width = c(.80,.95)) +
+  ggdist::stat_pointinterval(data = Combined_Slop_estimates,
+             aes(x = Model, ydist = rvar, color = Model), .width = c(.80,.95),
+             point_size = 1.3,alpha = 0.28, position=position_nudge(x = 0.20), width = 0.1)+
+  scale_color_manual(values = color_flag)+
+  facet_ragged_rows(vars(facet),
+                    vars(Country),
+                    scales = "free_y",
+                    labeller = label_wrap_gen(width= 17))+
+  labs(x = " ", y = "Slope Estimates")+
+  theme_bw()+
+  theme(
+    axis.text.x = element_blank(), axis.ticks.x=element_blank(),
+        strip.text.x = element_text(size = 11.5, face = "plain",
+                                    margin = margin(0.12,0,0.12,0, "cm")),
+        axis.text.y = element_text(size = 11,face = "bold"),
+      axis.title=element_text(size=14,face="bold"),
+     legend.position = "bottom", legend.text=element_text(size=11, face = "italic"))
+```
+
+### The plots
+
+```{r}
+pdf("Saved_Plots/Comparison_Visuals/ggragged_Intercept.pdf",
+    width = 14,
+    height = 10)
+G <- ggplotGrob(Intc)
+# g$layout$name
+Strip <- which(grepl('strip', G$layout$name)) 
+
+for (i in Strip){
+  j <- which(grepl('rect', G$grobs[[i]]$grobs[[1]]$childrenOrder))
+  k <- which(grepl('text', G$grobs[[i]]$grobs[[1]]$childrenOrder))
+  grobtext <- G$grobs[[i]]$grobs[[1]]$children[[k]]$children[[1]]$label
+  st <- match(grobtext, IR_Colors$group)
+  if (isTRUE( !is.na(st))){
+    G$grobs[[i]]$grobs[[1]]$children[[j]]$gp$fill <- IR_Colors[st, "color_IR"]
+    r <- which(grepl('text', G$grobs[[i]]$grobs[[1]]$children[[k]]$childrenOrder))
+    G$grobs[[i]]$grobs[[1]]$children[[k]]$children[[r]]$gp$col <- IR_Colors[st, "color_I"]
+  }
+}
+grid.draw(G)
+dev.off()
+
+###Slope
+pdf("Saved_Plots/Comparison_Visuals/ggragged_Slope.pdf",
+    width = 14,
+    height = 10)
+
+P <- ggplotGrob(Slop)
+
+strip <- which(grepl('strip', P$layout$name))
+
+for (i in strip){
+  j <- which(grepl('rect', P$grobs[[i]]$grobs[[1]]$childrenOrder))
+  k <- which(grepl('text', P$grobs[[i]]$grobs[[1]]$childrenOrder))
+  grobtext <- P$grobs[[i]]$grobs[[1]]$children[[k]]$children[[1]]$label
+  st <- match(grobtext, IR_Colors$group)
+  if (isTRUE( !is.na(st))){
+    P$grobs[[i]]$grobs[[1]]$children[[j]]$gp$fill <- IR_Colors[st, "color_IR"]
+    r <- which(grepl('text', P$grobs[[i]]$grobs[[1]]$children[[k]]$childrenOrder))
+    P$grobs[[i]]$grobs[[1]]$children[[k]]$children[[r]]$gp$col <- IR_Colors[st, "color_I"]
+  }
+}
+grid.draw(P)
+dev.off()
+```
+
+#### Comparing country estimates
+
+```{r}
+intc <- ggplot(data = Combined_Int_Estimates)+
+  geom_line(aes(x = Model, y = median(rvar), group = Country), linetype = "solid", color = "grey45")+
+  ggdist::stat_pointinterval(aes(x = Model, ydist =rvar,color = Model),
+                       point_size = 1.3, .width = c(.80,.95)) +
+  ggdist::stat_pointinterval(data = Combined_Int_estimates,
+             aes(x = Model, ydist = rvar, color = Model), .width = c(.80,.95),
+             point_size = 1.3,alpha = 0.28, position=position_nudge(x = 0.20), width = 0.1)+
+  scale_color_manual(values = color_flag)+
+  facet_ragged_rows(vars(facet),
+                    vars(Country),
+                    labeller = label_wrap_gen(width= 17))+
+  labs(x = " ", y = "Intercept estimates")+
+  theme_bw()+
+  theme(
+    axis.text.x = element_blank(), axis.ticks.x=element_blank(),
+        strip.text.x = element_text(size = 11.5, face = "plain",
+                                    margin = margin(0.12,0,0.12,0, "cm")),
+        axis.text.y = element_text(size = 11,face = "bold"),
+      axis.title=element_text(size=15,face="bold"),
+     legend.position = "bottom", legend.text=element_text(size=11, face = "bold.italic"))
+
+slop <- ggplot(data = Combined_Slop_Estimates)+
+  geom_line(aes(x = Model, y = median(rvar), group = Country), linetype = "solid", color = "grey45")+
+  ggdist::stat_pointinterval(aes(x = Model, ydist =rvar,color = Model),
+                       point_size = 1.3, .width = c(.80,.95)) +
+  ggdist::stat_pointinterval(data = Combined_Slop_estimates,
+             aes(x = Model, ydist = rvar, color = Model), .width = c(.80,.95),
+             point_size = 1.3,alpha = 0.28, position=position_nudge(x = 0.20), width = 0.1)+
+  scale_color_manual(values = color_flag)+
+  facet_ragged_rows(vars(facet),
+                    vars(Country),
+                    labeller = label_wrap_gen(width= 17))+
+  labs(x = " ", y = "Intercept estimates")+
+  theme_bw()+
+  theme(
+    axis.text.x = element_blank(), axis.ticks.x=element_blank(),
+        strip.text.x = element_text(size = 11.5, face = "plain",
+                                    margin = margin(0.12,0,0.12,0, "cm")),
+        axis.text.y = element_text(size = 10,face = "bold"),
+      axis.title=element_text(size=15,face="bold"),
+     legend.position = "bottom", legend.text=element_text(size=11, face = "bold.italic"))
+  
+#-------------------------------------------------------------------------------
+
+pdf("Saved_Plots/Comparison_Visuals/Comparing-countries-ggragged_Intercept.pdf",
+    width = 14,
+    height = 10)
+g <- ggplotGrob(intc)
+# g$layout$name
+Strip <- which(grepl('strip', g$layout$name)) 
+
+for (i in Strip){
+  j <- which(grepl('rect', g$grobs[[i]]$grobs[[1]]$childrenOrder))
+  k <- which(grepl('text', g$grobs[[i]]$grobs[[1]]$childrenOrder))
+  grobtext <- g$grobs[[i]]$grobs[[1]]$children[[k]]$children[[1]]$label
+  st <- match(grobtext, IR_Colors$group)
+  if (isTRUE( !is.na(st))){
+    g$grobs[[i]]$grobs[[1]]$children[[j]]$gp$fill <- IR_Colors[st, "color_IR"]
+    r <- which(grepl('text', g$grobs[[i]]$grobs[[1]]$children[[k]]$childrenOrder))
+    g$grobs[[i]]$grobs[[1]]$children[[k]]$children[[r]]$gp$col <- IR_Colors[st, "color_I"]
+  }
+}
+grid.draw(g)
+dev.off()
+
+###Slope
+pdf("Saved_Plots/Comparison_Visuals/Comparing-countries-ggraggedSlope.pdf",
+    width = 14,
+    height = 10)
+
+P <- ggplotGrob(slop)
+
+strip <- which(grepl('strip', P$layout$name))
+
+for (i in strip){
+  j <- which(grepl('rect', P$grobs[[i]]$grobs[[1]]$childrenOrder))
+  k <- which(grepl('text', P$grobs[[i]]$grobs[[1]]$childrenOrder))
+  grobtext <- P$grobs[[i]]$grobs[[1]]$children[[k]]$children[[1]]$label
+  st <- match(grobtext, IR_Colors$group)
+  if (isTRUE( !is.na(st))){
+    P$grobs[[i]]$grobs[[1]]$children[[j]]$gp$fill <- IR_Colors[st, "color_IR"]
+    r <- which(grepl('text', P$grobs[[i]]$grobs[[1]]$children[[k]]$childrenOrder))
+    P$grobs[[i]]$grobs[[1]]$children[[k]]$children[[r]]$gp$col <- IR_Colors[st, "color_I"]
+  }
+}
+grid.draw(P)
+dev.off()
+```
+
+

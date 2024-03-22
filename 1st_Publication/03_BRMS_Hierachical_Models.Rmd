@@ -1,0 +1,301 @@
+---
+title: "The Independent model, Bayesian hierarchical models for Country-specific, Region, Income and Income-Region"
+author: "Oluwayomi Akinfenwa"
+date: "09/03/2024"
+output:
+  html_document:
+    toc: yes
+    toc_depth: '4'
+    df_print: paged
+  bookdown::html_document2:
+    toc: no
+    toc_float: yes
+    toc_depth: 4
+    number_sections: yes
+  pdf_document:
+    toc: yes
+    toc_depth: '4'
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+options(knitr.duplicate.label = 'allow')
+```
+
+Sourcing the file containing all the data needed for this analysis from the Rmd file named: 01_PISA_Analysis_Data.Rmd.
+This file contains the raw data from OECD website and all the necessary data for this analysis.
+
+```{r loading the data}
+sys.source("01_BRMS_PISA_Analysis_Data.R", envir = knitr::knit_global())
+```
+
+**We have decided to use BRMS for this analysis and include the JAGS Model as appendix**
+
+## Setting the model specification in BRMS
+
+### Writing BRMS model for country-level specifications
+
+BRMS Stuffs
+
+```{r}
+#library(cmdstanr)
+options(mc.cores = 4
+    #brms.backend = "cmdstanr"
+)
+
+bayes_seed <-1234
+```
+
+Creating a folder to store all the plots
+
+```{r, libraries, include = FALSE}
+if (!dir.exists(here::here("Manuscript_Models")))
+  dir.create(here::here("Manuscript_Models"))
+```
+
+#### Independent model with gloabl mean as the slope.
+
+```{r}
+if (file.exists(here::here("Manuscript_Models", "CountryInd_BRMSModel.Rdata"))){
+  load(here::here("Manuscript_Models", "CountryInd_BRMSModel.Rdata"))
+  genBRMS <- FALSE
+} else genBRMS <- TRUE
+
+```
+
+```{r, message=FALSE, eval= genBRMS}
+#For the Independent linear model, we are interested in fitting a linear model omitting the countries with one data point.
+#Hence, we will use the SPISA_Europe_Data for this model fitting.
+
+S_Priors <- c(brms::prior(normal(500, 1000), class = Intercept),
+            brms::prior(normal(0, 50), class = b),
+            brms::prior(cauchy(30, 100), class = sigma))
+
+CountryInd_BRMSModel <- brms::brm(
+  brms::bf(math ~ (year_orig*Country)),
+  data = SPISA_Europe_Data,
+  iter = 12000, 
+  prior = S_Priors,
+  save_pars = save_pars(all = TRUE),
+  control = list(adapt_delta = 0.99, max_treedepth = 25),
+  silent = 2, chains = 4, seed = bayes_seed)
+
+save(CountryInd_BRMSModel, file=here::here("Manuscript_Models", "CountryInd_BRMSModel.Rdata"))
+```
+
+```{r}
+if (file.exists(here::here("Manuscript_Models", "Country_BRMSModel.Rdata"))){
+  load(here::here("Manuscript_Models", "Country_BRMSModel.Rdata"))
+  genBRMS <- FALSE
+} else genBRMS <- TRUE
+
+```
+
+#### Country-specific model with a distribution on all the country.
+
+```{r, message=FALSE, eval= genBRMS}
+
+C_Priors <- c(brms::prior(normal(500, 100), class = Intercept),
+            brms::prior(normal(0, 5), class = b),
+            brms::prior(cauchy(30, 10), class = sigma),
+            brms::prior(cauchy(30, 10), class = sd, coef = Intercept, group=Country),
+            brms::prior(cauchy(0, 2), class = sd, coef = year_orig, group=Country))
+
+
+Country_BRMSModel <- brms::brm(
+  brms::bf(math ~ year_orig + (1 + year_orig|Country)),
+  data = PISA_Europe_Data,
+  iter = 12000, 
+  prior = C_Priors,
+  save_pars = save_pars(all = TRUE),
+  control = list(adapt_delta = 0.93),
+  chains = 4, seed = bayes_seed)
+
+#Turning off the correlation
+Country_BRMSModel2 <- brms::brm(
+  brms::bf(math ~ year_orig + (1 + year_orig||Country)),
+  data = PISA_Europe_Data,
+  iter = 12000, 
+  prior = C_Priors,
+  save_pars = save_pars(all = TRUE),
+  control = list(adapt_delta = 0.93),
+  chains = 4, seed = bayes_seed)
+
+save(Country_BRMSModel,Country_BRMSModel2, 
+     file=here::here("Manuscript_Models", "Country_BRMSModel.Rdata"))
+```
+
+```{r}
+if (file.exists(here::here("Manuscript_Models", "Region_BRMSModel.Rdata"))){
+  load(here::here("Manuscript_Models", "Region_BRMSModel.Rdata"))
+  genBRMS <- FALSE
+} else genBRMS <- TRUE
+
+```
+
+Running the brms model for region hierarchical model
+
+```{r, message=FALSE, eval= genBRMS}
+
+R_Priors <- c(brms::prior(normal(500, 100), class = Intercept),
+            brms::prior(normal(0, 5), class = b),
+            brms::prior(cauchy(30, 10), class = sigma),
+            brms::prior(cauchy(0, 5), class = sd, coef = Intercept, group= Region),
+            brms::prior(cauchy(0, 2), class = sd, coef = year_orig, group= Region),
+            brms::prior(cauchy(30, 10), class = sd, coef = Intercept, group= Country),
+            brms::prior(cauchy(0, 2), class = sd, coef = year_orig, group= Country))
+
+
+Region_BRMSModel <- brms::brm(
+  brms::bf(math ~ year_orig + (1 + year_orig|Region)+ (1 + year_orig|Country)),
+  data = PISA_Europe_Data,
+  iter = 12000, 
+  prior = R_Priors,
+  save_pars = save_pars(all = TRUE),
+  control = list(adapt_delta = 0.99, max_treedepth = 20), silent=2,
+  chains = 4, seed = bayes_seed)
+
+#Turning off the correlation
+Region_BRMSModel2 <- brms::brm(
+  brms::bf(math ~ year_orig + (1 + year_orig||Region)+ (1 + year_orig||Country)),
+  data = PISA_Europe_Data,
+  iter = 12000, 
+  prior = R_Priors,
+  save_pars = save_pars(all = TRUE),
+  control = list(adapt_delta = 0.99, max_treedepth = 20), silent=2,
+  chains = 4, seed = bayes_seed)
+
+save( Region_BRMSModel,Region_BRMSModel2, 
+      file=here::here("Manuscript_Models", "Region_BRMSModel.Rdata"))
+```
+
+
+```{r}
+if (file.exists(here::here("Manuscript_Models", "Income_BRMSModel.Rdata"))){
+  load(here::here("Manuscript_Models", "Income_BRMSModel.Rdata"))
+  GenBRMS <- FALSE
+} else GenBRMS <- TRUE
+
+```
+
+Running the brms model for Income hierarchical model
+
+```{r, message=FALSE, eval= GenBRMS}
+
+I_Priors <-  c(brms::prior(normal(500, 100), class = Intercept),
+            brms::prior(normal(0, 5), class = b),
+            brms::prior(cauchy(30, 10), class = sigma),
+            brms::prior(cauchy(0, 5), class = sd, coef = Intercept, group= Income),
+            brms::prior(cauchy(0, 2), class = sd, coef = year_orig, group= Income),
+            brms::prior(cauchy(30, 10), class = sd, coef = Intercept, group= Country),
+            brms::prior(cauchy(0, 2), class = sd, coef = year_orig, group= Country))
+
+
+Income_BRMSModel <- brms::brm(
+  brms::bf(math ~ year_orig + (1 + year_orig|Income)+ (1 + year_orig|Country)),
+  data = PISA_Europe_Data,
+  iter = 12000, 
+  prior = I_Priors,
+  save_pars = save_pars(all = TRUE),
+  control = list(adapt_delta = 0.997, max_treedepth = 20), silent=2,
+  chains = 4, seed = bayes_seed)
+
+#Turning off the correlation
+Income_BRMSModel2 <- brms::brm(
+  brms::bf(math ~ year_orig + (1 + year_orig||Income)+ (1 + year_orig||Country)),
+  data = PISA_Europe_Data,
+  iter = 12000, 
+  prior = I_Priors,
+  save_pars = save_pars(all = TRUE),
+  control = list(adapt_delta = 0.997, max_treedepth = 20), silent=2,
+  chains = 4, seed = bayes_seed)
+
+save(Income_BRMSModel,Income_BRMSModel2,
+      file=here::here("Manuscript_Models", "Income_BRMSModel.Rdata"))
+```
+
+```{r}
+if (file.exists(here::here("Manuscript_Models", "IncomeRegion_BRMSModel.Rdata"))){
+  load(here::here("Manuscript_Models", "IncomeRegion_BRMSModel.Rdata"))
+  GenBRMS <- FALSE
+} else GenBRMS <- TRUE
+
+```
+
+Running the brms model for Income hierarchical model
+
+```{r, message=FALSE, eval= GenBRMS}
+
+IR_Priors <- c(brms::prior(normal(500, 100), class = Intercept),
+            brms::prior(normal(0, 5), class = b),
+            brms::prior(cauchy(30, 10), class = sigma),
+            brms::prior(cauchy(0, 5), class = sd, coef = Intercept, group= Income_Region),
+            brms::prior(cauchy(0, 2), class = sd, coef = year_orig, group= Income_Region),
+            brms::prior(cauchy(30, 10), class = sd, coef = Intercept, group= Country),
+            brms::prior(cauchy(0, 2), class = sd, coef = year_orig, group= Country))
+
+
+IncomeRegion_BRMSModel <- brms::brm(
+  brms::bf(math ~ year_orig + (1 + year_orig|Income_Region)+ (1 + year_orig|Country)),
+  data = PISA_Europe_Data,
+  iter = 12000, 
+  prior = IR_Priors,
+  save_pars = save_pars(all = TRUE),
+  control = list(adapt_delta = 0.999, max_treedepth = 15), silent=2,
+  chains = 4, seed = bayes_seed)
+
+#Turning off the correlation
+IncomeRegion_BRMSModel2 <- brms::brm(
+  brms::bf(math ~ year_orig + (1 + year_orig||Income_Region)+ (1 + year_orig||Country)),
+  data = PISA_Europe_Data,
+  iter = 12000, 
+  prior = IR_Priors,
+  save_pars = save_pars(all = TRUE),
+  control = list(adapt_delta = 0.999, max_treedepth = 15), silent=2,
+  chains = 4, seed = bayes_seed)
+
+save(IncomeRegion_BRMSModel, IncomeRegion_BRMSModel2,
+      file=here::here("Manuscript_Models", "IncomeRegion_BRMSModel.Rdata"))
+```
+
+#### Model comparison tests
+
+```{r}
+fit1 <- add_criterion(CountryInd_BRMSModel, "loo", moment_mamtch = TRUE)
+
+fit2 <- add_criterion(Country_BRMSModel, "loo",
+                      moment_mamtch = TRUE)
+
+fit3 <- add_criterion(Region_BRMSModel, "loo",
+                      moment_mamtch = TRUE)
+
+fit4 <- add_criterion(Income_BRMSModel, "loo",
+                      moment_mamtch = TRUE)
+
+fit5 <- add_criterion(IncomeRegion_BRMSModel, "loo",
+                      moment_mamtch = TRUE)
+
+#Turning off the correlation
+fit22 <- add_criterion(Country_BRMSModel2, "loo",
+                      moment_mamtch = TRUE)
+
+fit32 <- add_criterion(Region_BRMSModel2, "loo",
+                      moment_mamtch = TRUE)
+
+fit42 <- add_criterion(Income_BRMSModel2, "loo",
+                      moment_mamtch = TRUE)
+
+fit52 <- add_criterion(IncomeRegion_BRMSModel2, "loo",
+                      moment_mamtch = TRUE)
+
+#Comparing all the models
+loo_compare(fit2, fit3, fit4, fit5, criterion = "loo")
+
+loo_compare(fit22, fit32, fit42, fit52, criterion = "loo")
+
+loo_compare(fit2, fit3, fit4, fit5,
+            fit22, fit32, fit42, fit52, criterion = "loo")
+```
+The results above shows that model 1 (the independent linear model is the worse model), followed by the model 3(Region hierarchical model) and the best are the Country-specific model, the Income-Region model.
+
+One of the advantages of the our proposed visualisation approach is its ability for model comparison and selection. Based on our visual, we choose fit 5 (the incomeregion hierarchical model as the best model).
