@@ -1,0 +1,199 @@
+---
+title: "Model predictions from BRMS Model"
+author: "Oluwayomi Akinfenwa"
+date: "21/03/2024"
+output:
+  html_document:
+    toc: yes
+    toc_depth: '4'
+    df_print: paged
+  bookdown::html_document2:
+    toc: no
+    toc_float: yes
+    toc_depth: 4
+    number_sections: yes
+  pdf_document:
+    toc: yes
+    toc_depth: '4'
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+options(knitr.duplicate.label = 'allow')
+```
+
+### Loading the Rmd file containing the BRMS model fitting and extracting the model estimates.
+
+```{r, libraries, include = FALSE}
+source(knitr::purl("03_JAGS_Hierarchical_Models.Rmd"))
+```
+
+Creating a folder to store all the plots
+
+```{r, libraries, include = FALSE}
+if (!dir.exists(here::here("Saved_Plots/Pred_differences")))
+  dir.create(here::here("Saved_Plots/Pred_differences"))
+```
+
+#### Creating pred_grid for model predictions
+
+```{r}
+#Independent country model predictions
+JAGS_CountryInd_Pred <- spread_rvars(CountryInd_ModelSample , ytilde[Index]) |>
+  left_join(Spred_grid, join_by(Index== Index)) |>
+  select(Country, year, year_orig, Region, Income, Income_Region, pred=ytilde)
+
+#Country-specific model predictions
+JAGS_Country_Pred <- spread_rvars(Country_ModelSample , ytilde[Index]) |>
+  left_join(pred_grid, join_by(Index== Index)) |>
+  select(Country, year, year_orig, Region, Income, Income_Region, pred=ytilde)
+
+ #Region hierarchical model predictions
+JAGS_Region_Pred <- spread_rvars(Country_ModelSample , ytilde[Index]) |>
+  left_join(pred_grid, join_by(Index== Index)) |>
+  select(Country, year, year_orig, Region, Income, Income_Region, pred=ytilde)
+
+#Income hierarchical  model predictions
+JAGS_Income_Pred <- spread_rvars(Country_ModelSample , ytilde[Index]) |>
+  left_join(pred_grid, join_by(Index== Index)) |>
+  select(Country, year, year_orig, Region, Income, Income_Region, pred=ytilde)
+
+#Income-Region hierarchical model predictions
+JAGS_IR_Pred <- spread_rvars(Country_ModelSample , ytilde[Index]) |>
+  left_join(pred_grid, join_by(Index== Index)) |>
+  select(Country, year, year_orig, Region, Income, Income_Region, pred=ytilde)
+```
+
+### Pulling the posterior draws estimates for the year 2022.
+
+#### Filtering year == 2022
+
+```{r}
+JAGS_CountryInd_pred <- JAGS_CountryInd_Pred |>
+  filter(year == "2022")
+
+JAGS_Country_pred <- JAGS_Country_Pred|>
+  filter(year == "2022")
+
+JAGS_Region_pred <- JAGS_Region_Pred |>
+  filter(year == "2022")
+
+JAGS_Income_pred <- JAGS_Income_Pred |>
+  filter(year == "2022")
+
+JAGS_IR_pred <- JAGS_IR_Pred |>
+  filter(year == "2022")
+```
+
+### Based on the recommendations from our last meeting, we want to calculate the
+### probability of the posterior prediction less than the observed PISA scores for year 2022.
+
+```{r}
+#the observed values for 2022
+yobserved <- Pisa_Europe_Data |>
+  filter(year == "2022")
+
+#Independent model fit
+JAGS_CountryInd_Pred <- JAGS_CountryInd_pred |>
+  left_join(select(yobserved, Country, math), join_by(Country)) |>
+  mutate(prob = posterior::Pr(pred <= math)) |>
+  mutate(pred0 = pred-median(pred),math0 = math- median(pred)) |>
+  arrange(!is.na(math0), math0) |>
+  mutate(Country = factor(Country, levels = Country)) 
+
+#Country_specific model
+JAGS_Country_Pred <- JAGS_Country_pred |>
+  left_join(select(yobserved, Country, math), join_by(Country)) |>
+  mutate(prob = posterior::Pr(pred <= math))|>
+  mutate(pred0 = pred-median(pred),math0 = math- median(pred)) |>
+  arrange(!is.na(math0), math0) |>
+  mutate(Country = factor(Country, levels = Country)) 
+
+#Region hierarchical model
+JAGS_Region_Pred <- JAGS_Region_pred |>
+  left_join(select(yobserved, Country, math), join_by(Country)) |>
+  mutate(prob = posterior::Pr(pred <= math))|>
+  mutate(pred0 = pred-median(pred),math0 = math- median(pred)) |>
+  arrange(!is.na(math0), math0) |>
+  mutate(Country = factor(Country, levels = Country)) 
+
+#Income hierarchical model
+JAGS_Income_Pred <- JAGS_Income_pred |>
+  left_join(select(yobserved, Country, math), join_by(Country)) |>
+  mutate(prob = posterior::Pr(pred <= math))|>
+  mutate(pred0 = pred-median(pred),math0 = math- median(pred)) |>
+  arrange(!is.na(math0), math0) |>
+  mutate(Country = factor(Country, levels = Country)) 
+
+#Income-Region hierarchical model
+JAGS_IR_Pred <- JAGS_IR_pred |>
+  left_join(select(yobserved, Country, math), join_by(Country)) |>
+  mutate(prob = posterior::Pr(pred <= math))|>
+  mutate(pred0 = pred-median(pred),math0 = math- median(pred)) |>
+  arrange(!is.na(math0), math0) |>
+  mutate(Country = factor(Country, levels = Country)) 
+```
+
+#### Visualising the probability of the pred values less than or equal the observed PISA 2022 scores.
+
+```{r}
+pdf("Saved_Plots/Pred_differences/Pred_diff_IndM.pdf",
+    width = 10,
+    height = 7)
+ggplot(data =IndCountry_Pred)+
+  ggdist::stat_pointinterval(aes(xdist = pred0, y= Country),
+          color ="burlywood4", .width = c(.50, .80, .95), point_size = 1.4) +
+  geom_point(aes(x= math0, y= Country),
+             shape=23, fill="blue", color="darkred", size=1.5)  +
+  xlab("Differences between predicted and observed")+
+  ggtitle("Independent country model \n The difference between the predicted value and the observed value.")
+dev.off()
+
+
+pdf("Saved_Plots/Pred_differences/JAGS_Pred_diff_CM.pdf",
+    width = 10,
+    height = 7)
+ggplot(data = JAGS_Country_Pred)+
+  ggdist::stat_pointinterval(aes(xdist = pred0, y= Country),
+          color ="burlywood4", .width = c(.50, .80, .95), point_size = 1.4) +
+  geom_point(aes(x= math0, y= Country),
+             shape=23, fill="blue", color="darkred", size=1.5)  +
+  xlab("Differences between predicted and observed") +ggtitle("Country-specific model \n The difference between the predicted value and the observed value.")
+dev.off()
+
+
+pdf("Saved_Plots/Pred_differences/JAGS_Pred_diff_RM.pdf",
+    width = 10,
+    height = 7)
+ggplot(data = JAGS_Region_Pred)+
+  ggdist::stat_pointinterval(aes(xdist = pred0, y= Country),
+          color ="burlywood4", .width = c(.50, .80, .95), point_size = 1.4) +
+  geom_point(aes(x= math0, y= Country),
+             shape=23, fill="blue", color="darkred", size=1.5)  +
+  xlab("Differences between predicted and observed") +ggtitle("Region Hierarchical \n The difference between the predicted value and the observed value.")
+dev.off()
+
+
+pdf("Saved_Plots/Pred_differences/JAGS_Pred_diff_IM.pdf",
+    width = 10,
+    height = 7)
+ggplot(data = JAGS_Income_Pred)+
+  ggdist::stat_pointinterval(aes(xdist = pred0, y= Country),
+          color ="burlywood4", .width = c(.50, .80, .95), point_size = 1.4) +
+  geom_point(aes(x= math0, y= Country),
+             shape=23, fill="blue", color="darkred", size=1.5)  +
+  xlab("Differences between predicted and observed") +ggtitle("Income Hierarchical \n The difference between the predicted value and the observed value.")
+dev.off()
+
+
+pdf("Saved_Plots/Pred_differences/JAGS_Pred_diff_IRM.pdf",
+    width = 10,
+    height = 7)
+ggplot(data = JAGS_IR_Pred)+
+  ggdist::stat_pointinterval(aes(xdist = pred0, y= Country),
+          color ="burlywood4", .width = c(.50, .80, .95), point_size = 1.4) +
+  geom_point(aes(x= math0, y= Country),
+             shape=23, fill="blue", color="darkred", size=1.5)  +
+  xlab("Differences between predicted and observed") +ggtitle("Income-Region Hierarchical model \n The difference between the predicted value and the observed value.")
+dev.off()
+```
