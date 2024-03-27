@@ -1,0 +1,225 @@
+---
+title: "Plotting the distribution of the Sigmas of the paramter and hyper-parameter across all the fitted models"
+author: "Oluwayomi Akinfenwa"
+date: "27/03/2024"
+output:
+  html_document:
+    toc: yes
+    toc_depth: '4'
+    df_print: paged
+  bookdown::html_document2:
+    toc: no
+    toc_float: yes
+    toc_depth: 4
+    number_sections: yes
+  pdf_document:
+    toc: yes
+    toc_depth: '4'
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+options(knitr.duplicate.label = 'allow')
+```
+
+Sourcing the file containing all the data needed for this analysis from the Rmd file named: 01_PISA_Analysis_Data.Rmd.
+This file contains the raw data from OECD website and all the necessary data for this analysis.
+
+```{r loading the data}
+sys.source("01_BRMS_PISA_Analysis_Data.R", envir = knitr::knit_global())
+```
+
+
+## Loading the hierarchical models from the saved R.Data file
+
+```{r}
+#Independent-Country specific model
+load(here::here("Manuscript_Models", "CountryInd_BRMSModel.Rdata"))
+
+#Country specific model
+load(here::here("Manuscript_Models", "Country_BRMSModel.Rdata"))
+
+#Region hierarchical model
+load(here::here("Manuscript_Models", "Region_BRMSModel.Rdata"))
+
+#Income hierarchical model
+load(here::here("Manuscript_Models", "Income_BRMSModel.Rdata"))
+
+#Income-Region hierarchical model
+load(here::here("Manuscript_Models", "IncomeRegion_BRMSModel.Rdata"))
+```
+
+### Pulling the sigma estimates from all the fitted models
+
+#### Sigma estimates from the independent-country-specific model
+
+```{r}
+#get_variables(CountryInd_BRMSModel)
+
+#pulling the sigma estimates from the model iterations for the  CountryInd_BRMSModel.
+
+CountryInd_sigma <-posterior::as_draws(CountryInd_BRMSModel, 
+                variable = "sigma",regex = TRUE) |>
+  purrr::map_dfr(as_tibble) 
+
+#plotting the distribution of the sigma from the Independent country model.
+# I decided to use the geom_halfeyeh() instead of the geom_density() because it generates a combination of a density and stat_pointintervalh denoting the density, point estimates alongside the uncertainty intervals for draws from the sigma distribution.
+CountryInd_sigma |>
+  ggplot(aes(x = sigma)) +
+  geom_halfeyeh()+ ggtitle("global Sigma distribution for Independent country model")
+```
+
+#### Sigma estimates from the country-specific model
+
+```{r}
+#get_variables(Country_BRMSModel)
+
+#pulling the sigma estimates from the model iterations for the  CountryInd_BRMSModel.
+#Intercept
+Country_I_sigma <- spread_draws(Country_BRMSModel, sd_Country__Intercept) |>
+  rename(sigma =`sd_Country__Intercept`)
+
+#Slope
+Country_S_sigma <- spread_draws(Country_BRMSModel, sd_Country__year_orig) |>
+  rename(sigma =`sd_Country__year_orig`)
+
+#plotting the distribution of the sigma from the country-specific model.
+# I decided to use the stat_halfeye() instead of the geom_density() because it generates a combination of a density and stat_pointintervalh denoting the density, point estimates alongside the uncertainty intervals for draws from the sigma distribution.
+Country_I_sigma |>
+  ggplot(aes(x = sigma)) +
+  stat_halfeye() + ggtitle("Sigma distribution attached to the Intercept parameter for Country-specific model")
+
+Country_S_sigma |>
+  ggplot(aes(x = sigma)) +
+  stat_halfeye()+ ggtitle("Sigma distribution attached to the Slope parameter for Country-specific model")
+```
+
+#### Sigma estimates from the Region hierarchical model
+
+```{r}
+#get_variables(Region_BRMSModel)
+
+#pulling the sigma estimates from the model iterations for the  Region_BRMSModel.
+#The hierarchical structure
+#Intercept
+Region_I_sigma <- spread_draws(Region_BRMSModel, sd_Region__Intercept) |>
+  rename(sigma =`sd_Region__Intercept`)
+
+#Slope
+Region_S_sigma <- spread_draws(Region_BRMSModel, sd_Region__year_orig) |>
+  rename(sigma =`sd_Region__year_orig`)
+
+#The country  variations
+#Intercept
+RegionC_I_sigma <- spread_draws(Region_BRMSModel, sd_Country__Intercept) |>
+  rename(sigma =`sd_Country__Intercept`)
+
+#Slope
+RegionC_S_sigma <- spread_draws(Region_BRMSModel, sd_Country__year_orig) |>
+  rename(sigma =`sd_Country__year_orig`)
+
+#plotting the distribution of the sigma from the Region hierarchical model.
+Region_I_sigma |>
+  ggplot(aes(x = sigma)) +
+  stat_halfeye() + ggtitle("Sigma distribution attached to the Region hyper-parameter Intercept estimates")
+
+Region_S_sigma |>
+  ggplot(aes(x = sigma)) +
+  stat_halfeye()+ ggtitle("Sigma distribution attached to the Region hyper-parameter Slope estimates")
+
+#Sigma distribution for the Country parameter estimates
+RegionC_I_sigma |>
+  ggplot(aes(x = sigma)) +
+  stat_halfeye() + ggtitle("Sigma distribution attached to the Intercept parameter for Region hierarchical model")
+
+RegionC_S_sigma |>
+  ggplot(aes(x = sigma)) +
+  stat_halfeye()+ ggtitle("Sigma distribution attached to the Slope parameter for Region hierarchical model")
+```
+
+#### Sigma estimates from the Income hierarchical model
+
+```{r}
+#get_variables(Income_BRMSModel)
+
+#pulling the sigma estimates from the model iterations for the Income_BRMSModel.
+#The hierarchical structure
+#Intercept
+Income_I_sigma <- spread_draws(Income_BRMSModel, sd_Income__Intercept) |>
+  rename(sigma =`sd_Income__Intercept`)
+
+#Slope
+Income_S_sigma <- spread_draws(Income_BRMSModel, sd_Income__year_orig) |>
+  rename(sigma =`sd_Income__year_orig`)
+
+#The country  variations
+#Intercept
+IncomeC_I_sigma <- spread_draws(Income_BRMSModel, sd_Country__Intercept) |>
+  rename(sigma =`sd_Country__Intercept`)
+
+#Slope
+IncomeC_S_sigma <- spread_draws(Income_BRMSModel, sd_Country__year_orig) |>
+  rename(sigma =`sd_Country__year_orig`)
+
+#plotting the distribution of the sigma from the Income hierarchical model.
+Income_I_sigma |>
+  ggplot(aes(x = sigma)) +
+  stat_halfeye() + ggtitle("Sigma distribution attached to the Income hyper-parameter Intercept estimates")
+
+Income_S_sigma |>
+  ggplot(aes(x = sigma)) +
+  stat_halfeye()+ ggtitle("Sigma distribution attached to the Income hyper-parameter Slope estimates")
+
+#Sigma distribution for the Country parameter estimates
+IncomeC_I_sigma |>
+  ggplot(aes(x = sigma)) +
+  stat_halfeye() + ggtitle("Sigma distribution attached to the Intercept parameter for Income hierarchical model")
+
+IncomeC_S_sigma |>
+  ggplot(aes(x = sigma)) +
+  stat_halfeye()+ ggtitle("Sigma distribution attached to the Slope parameter for Income hierarchical model")
+```
+
+
+#### Sigma estimates from the Income-Region hierarchical model
+
+```{r}
+#get_variables(IncomeRegion_BRMSModel)
+
+#pulling the sigma estimates from the model iterations for the  Income-Region_BRMSModel.
+#The hierarchical structure
+#Intercept
+IncomeRegion_I_sigma <- spread_draws(IncomeRegion_BRMSModel, sd_Income_Region__Intercept) |>
+  rename(sigma =`sd_Income_Region__Intercept`)
+
+#Slope
+IncomeRegion_S_sigma <- spread_draws(IncomeRegion_BRMSModel, sd_Income_Region__year_orig) |>
+  rename(sigma =`sd_Income_Region__year_orig`)
+
+#The country  variations
+#Intercept
+IRC_I_sigma <- spread_draws(IncomeRegion_BRMSModel, sd_Country__Intercept) |>
+  rename(sigma =`sd_Country__Intercept`)
+
+#Slope
+IRC_S_sigma <- spread_draws(IncomeRegion_BRMSModel, sd_Country__year_orig) |>
+  rename(sigma =`sd_Country__year_orig`)
+
+#plotting the distribution of the sigma from the Income-Region hierarchical model.
+IncomeRegion_I_sigma |>
+  ggplot(aes(x = sigma)) +
+  stat_halfeye() + ggtitle("Sigma distribution attached to the Income-Region hyper-parameter Intercept estimates")
+
+IncomeRegion_S_sigma |>
+  ggplot(aes(x = sigma)) +
+  stat_halfeye()+ ggtitle("Sigma distribution attached to the Income-Region hyper-parameter Slope estimates")
+
+#Sigma distribution for the Country parameter estimates
+IRC_I_sigma |>
+  ggplot(aes(x = sigma)) +
+  stat_halfeye() + ggtitle("Sigma distribution attached to the Intercept parameter for Income-Region hierarchical model")
+
+IRC_S_sigma |>
+  ggplot(aes(x = sigma)) +
+  stat_halfeye()+ ggtitle("Sigma distribution attached to the Slope parameter for Income-Region hierarchical model")
+```
