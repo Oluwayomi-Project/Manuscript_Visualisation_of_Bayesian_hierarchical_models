@@ -1,0 +1,320 @@
+---
+title: "Model predictions from BRMS Model"
+author: "Oluwayomi Akinfenwa"
+date: "27/06/2024"
+output:
+  html_document:
+    toc: yes
+    toc_depth: '4'
+    df_print: paged
+  bookdown::html_document2:
+    toc: no
+    toc_float: yes
+    toc_depth: 4
+    number_sections: yes
+  pdf_document:
+    toc: yes
+    toc_depth: '4'
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+options(knitr.duplicate.label = 'allow')
+```
+
+### Sourcing the indexing file containing the data and the country, region, income, income-region names and indexing.
+
+```{r, data, include = FALSE}
+sys.source("01_BRMS_PISA_Analysis_Data.R", envir = knitr::knit_global())
+```
+
+Creating a folder to store all the plots
+
+```{r, libraries, include = FALSE}
+if (!dir.exists(here::here("Saved_Plots/Pred_differences")))
+  dir.create(here::here("Saved_Plots/Pred_differences"))
+```
+
+## Loading the hierarchical models from the saved R.Data file
+
+```{r}
+#Independent-Country specific model
+load(here::here("Manuscript_Models", "CountryInd_BRMSModel.Rdata"))
+
+#Country specific model
+load(here::here("Manuscript_Models", "Country_BRMSModel.Rdata"))
+
+#Region hierarchical model
+load(here::here("Manuscript_Models", "Region_BRMSModel.Rdata"))
+
+#Income hierarchical model
+load(here::here("Manuscript_Models", "Income_BRMSModel.Rdata"))
+
+#Income-Region hierarchical model
+load(here::here("Manuscript_Models", "IncomeRegion_BRMSModel.Rdata"))
+```
+
+### Pulling the posterior draws estimates for the year 2022.
+
+#### ytilde estimates from all the models
+
+```{r}
+#Independent model fit
+CountryInd_model_pred <- SPred_grid|>
+add_predicted_rvars(CountryInd_BRMSModel) |>
+rename(pred = .prediction)
+
+#Country_specific model
+Country_model_pred <- Pred_grid|>
+  add_predicted_rvars(Country_BRMSModel) |>
+  rename(pred = .prediction)
+
+#Region hierarchical model
+Region_model_pred <- Pred_grid|>
+  add_predicted_rvars(Region_BRMSModel) |>
+  rename(pred = .prediction)
+
+#Income hierarchical model                         
+Income_model_pred <- Pred_grid|>
+  add_predicted_rvars(Income_BRMSModel) |>
+  rename(pred = .prediction)
+
+#Income_Region hierarchical model
+IR_model_pred <- Pred_grid|>
+  add_predicted_rvars(IncomeRegion_BRMSModel) |>
+  rename(pred = .prediction)
+```
+
+### Based on the recommendations from our last meeting, we want to calculate the
+### probability of the posterior prediction less than the observed PISA scores for year 2022.
+
+```{r}
+#the observed values for 2022
+yobserved <- Pisa_Europe_Data |>
+  filter(year == "2022")
+
+#Independent model fit
+IndCountry_Pred <- CountryInd_model_pred |>
+  left_join(select(yobserved, Country, math), join_by(Country)) |>
+  mutate(prob = posterior::Pr(pred <= math)) |>
+  mutate(pred0 = pred-median(pred),math0 = math- median(pred)) |>
+  arrange(!is.na(math0), math0) |>
+  mutate(Country = factor(Country, levels = Country)) 
+
+#Country_specific model
+Country_Pred <- Country_model_pred |>
+  left_join(select(yobserved, Country, math), join_by(Country)) |>
+  mutate(prob = posterior::Pr(pred <= math))|>
+  mutate(pred0 = pred-median(pred),math0 = math- median(pred)) |>
+  arrange(!is.na(math0), math0) |>
+  mutate(Country = factor(Country, levels = Country)) 
+
+#Region hierarchical model
+Region_Pred <- Region_model_pred |>
+  left_join(select(yobserved, Country, math), join_by(Country)) |>
+  mutate(prob = posterior::Pr(pred <= math))|>
+  mutate(pred0 = pred-median(pred),math0 = math- median(pred)) |>
+  arrange(!is.na(math0), math0) |>
+  mutate(Country = factor(Country, levels = Country)) 
+
+#Income hierarchical model
+Income_Pred <- Income_model_pred |>
+  left_join(select(yobserved, Country, math), join_by(Country)) |>
+  mutate(prob = posterior::Pr(pred <= math))|>
+  mutate(pred0 = pred-median(pred),math0 = math- median(pred)) |>
+  arrange(!is.na(math0), math0) |>
+  mutate(Country = factor(Country, levels = Country)) 
+
+#Income-Region hierarchical model
+IR_Pred <- IR_model_pred |>
+  left_join(select(yobserved, Country, math), join_by(Country)) |>
+  mutate(prob = posterior::Pr(pred <= math))|>
+  mutate(pred0 = pred-median(pred),math0 = math- median(pred)) |>
+  arrange(!is.na(math0), math0) |>
+  mutate(Country = factor(Country, levels = Country)) 
+```
+
+### 27/06/2024 - New plot of the differences facet by region.
+
+### Based on the recommendations from our last meeting, we want to plot the differences between predicted and observed PISA scores for 2022
+
+##### Creating grid to color the plot
+
+```{r}
+# Creating a grid for the color
+Names <- Country_Pred |>
+  select(Country, Region)
+
+Region_color <- c("Eastern Europe" = "lightsteelblue2",
+                  "Northern Europe"="lavenderblush2", 
+                  "Southern Europe"= "bisque2",
+                  "Western Europe"="#ACE1AF")
+
+Colors <- Names |>
+  mutate(color_region = Region_color[Region]) |>
+  as.data.frame()
+```
+
+#####Independent linear model
+
+```{r}
+# The plot
+P_Ind <- ggplot(data = IndCountry_Pred,
+       aes(x= math0, y= Country)) +
+        geom_point(shape=23, fill="blue", color="darkred", size=2.8) +
+  facet_grid(Region ~ ., scales = "free_y", switch = "y") + 
+  labs(x = "Differences between predicted and observed PISA2022", y = " ") +
+  theme_bw() +
+  theme(strip.text = element_text(size = 10.5, face = "bold"),
+        axis.text.y = element_text(size = 11.5))
+
+pdf("Saved_Plots/Pred_differences/Diff_IndM.pdf")
+#creating the grid color
+g1 <- ggplotGrob(P_Ind) # for other ggplots
+
+stripl <- which(grepl('strip-l', g1$layout$name))  #the y axis names has been switch to the left, hence the reason for the strip-l
+
+for (i in stripl){
+  j <- which(grepl('rect', g1$grobs[[i]]$grobs[[1]]$childrenOrder))
+  k <- which(grepl('text', g1$grobs[[i]]$grobs[[1]]$childrenOrder))
+  grobtext <- g1$grobs[[i]]$grobs[[1]]$children[[k]]$children[[1]]$label
+  st <- match(grobtext, Colors$Region)
+  if (!is.na(st)){
+    g1$grobs[[i]]$grobs[[1]]$children[[j]]$gp$fill <- Colors[st, "color_region"]
+  }
+}
+
+grid.draw(g1)
+dev.off()
+```
+
+#### Country Model
+
+```{r}
+# The plot
+P_Country <- ggplot(data = Country_Pred,
+       aes(x= math0, y= Country)) +
+        geom_point(shape=23, fill="blue", color="darkred", size=2.8) +
+  facet_grid(Region ~ ., scales = "free_y", switch = "y") + 
+  labs(x = "Differences between predicted and observed PISA2022", y = " ") +
+  theme_bw() +
+  theme(strip.text = element_text(size = 10.5, face = "bold"),
+        axis.text.y = element_text(size = 11.5))
+
+pdf("Saved_Plots/Pred_differences/Diff_CM.pdf")
+#creating the grid color
+g2 <- ggplotGrob(P_Country) # for other ggplots
+
+stripl <- which(grepl('strip-l', g2$layout$name))  #the y axis names has been switch to the left, hence the reason for the strip-l
+
+for (i in stripl){
+  j <- which(grepl('rect', g2$grobs[[i]]$grobs[[1]]$childrenOrder))
+  k <- which(grepl('text', g2$grobs[[i]]$grobs[[1]]$childrenOrder))
+  grobtext <- g2$grobs[[i]]$grobs[[1]]$children[[k]]$children[[1]]$label
+  st <- match(grobtext, Colors$Region)
+  if (!is.na(st)){
+    g2$grobs[[i]]$grobs[[1]]$children[[j]]$gp$fill <- Colors[st, "color_region"]
+  }
+}
+
+grid.draw(g2)
+dev.off()
+```
+
+#### Region Model
+
+```{r}
+# The plot
+P_Region <- ggplot(data = Region_Pred,
+       aes(x= math0, y= Country)) +
+        geom_point(shape=23, fill="blue", color="darkred", size=2.8) +
+  facet_grid(Region ~ ., scales = "free_y", switch = "y") + 
+  labs(x = "Differences between predicted and observed PISA2022", y = " ") +
+  theme_bw() +
+  theme(strip.text = element_text(size = 10.5, face = "bold"),
+        axis.text.y = element_text(size = 11.5))
+
+pdf("Saved_Plots/Pred_differences/Diff_RegionM.pdf")
+#creating the grid color
+g3 <- ggplotGrob(P_Region) # for other ggplots
+
+stripl <- which(grepl('strip-l', g3$layout$name))  #the y axis names has been switch to the left, hence the reason for the strip-l
+
+for (i in stripl){
+  j <- which(grepl('rect', g3$grobs[[i]]$grobs[[1]]$childrenOrder))
+  k <- which(grepl('text', g3$grobs[[i]]$grobs[[1]]$childrenOrder))
+  grobtext <- g3$grobs[[i]]$grobs[[1]]$children[[k]]$children[[1]]$label
+  st <- match(grobtext, Colors$Region)
+  if (!is.na(st)){
+    g3$grobs[[i]]$grobs[[1]]$children[[j]]$gp$fill <- Colors[st, "color_region"]
+  }
+}
+
+grid.draw(g3)
+dev.off()
+```
+
+#### Income model
+
+```{r}
+# The plot
+P_Income <- ggplot(data = Income_Pred,
+       aes(x= math0, y= Country)) +
+        geom_point(shape=23, fill="blue", color="darkred", size=2.8) +
+  facet_grid(Region ~ ., scales = "free_y", switch = "y") + 
+  labs(x = "Differences between predicted and observed PISA2022", y = " ") +
+  theme_bw() +
+  theme(strip.text = element_text(size = 10.5, face = "bold"),
+        axis.text.y = element_text(size = 11.5))
+
+pdf("Saved_Plots/Pred_differences/Diff_IncomeM.pdf")
+#creating the grid color
+g4 <- ggplotGrob(P_Income) # for other ggplots
+
+stripl <- which(grepl('strip-l', g4$layout$name))  #the y axis names has been switch to the left, hence the reason for the strip-l
+
+for (i in stripl){
+  j <- which(grepl('rect', g4$grobs[[i]]$grobs[[1]]$childrenOrder))
+  k <- which(grepl('text', g4$grobs[[i]]$grobs[[1]]$childrenOrder))
+  grobtext <- g4$grobs[[i]]$grobs[[1]]$children[[k]]$children[[1]]$label
+  st <- match(grobtext, Colors$Region)
+  if (!is.na(st)){
+    g4$grobs[[i]]$grobs[[1]]$children[[j]]$gp$fill <- Colors[st, "color_region"]
+  }
+}
+
+grid.draw(g4)
+dev.off()
+```
+
+#### Income-Region model
+```{r}
+# The plot
+P_IR <- ggplot(data = IR_Pred,
+       aes(x= math0, y= Country)) +
+        geom_point(shape=23, fill="blue", color="darkred", size=2.8) +
+  facet_grid(Region ~ ., scales = "free_y", switch = "y") + 
+  labs(x = "Differences between predicted and observed PISA2022", y = " ") +
+  theme_bw() +
+  theme(strip.text = element_text(size = 10.5, face = "bold"),
+        axis.text.y = element_text(size = 11.5))
+
+pdf("Saved_Plots/Pred_differences/Diff_IRM.pdf")
+#creating the grid color
+g5 <- ggplotGrob(P_IR) # for other ggplots
+
+stripl <- which(grepl('strip-l', g5$layout$name))  #the y axis names has been switch to the left, hence the reason for the strip-l
+
+for (i in stripl){
+  j <- which(grepl('rect', g5$grobs[[i]]$grobs[[1]]$childrenOrder))
+  k <- which(grepl('text', g5$grobs[[i]]$grobs[[1]]$childrenOrder))
+  grobtext <- g5$grobs[[i]]$grobs[[1]]$children[[k]]$children[[1]]$label
+  st <- match(grobtext, Colors$Region)
+  if (!is.na(st)){
+    g5$grobs[[i]]$grobs[[1]]$children[[j]]$gp$fill <- Colors[st, "color_region"]
+  }
+}
+
+grid.draw(g5)
+dev.off()
+```
